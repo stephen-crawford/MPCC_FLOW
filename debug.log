@@ -1,0 +1,162 @@
+2026-02-05 14:21:50,064 [INFO] ✓ Polytope at disc 0, step 0: Reference position (0.000, 0.000) satisfies all 20 constraints
+2026-02-05 14:21:50,065 [WARNING] Step 0, disc 0: 20 constraints exceed per-step limit 3
+2026-02-05 14:21:50,067 [INFO] ✓ Polytope at disc 0, step 0: Reference position (0.000, 0.000) satisfies all 3 constraints
+2026-02-05 14:21:50,069 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=200, weight_type=wasserstein
+2026-02-05 14:21:50,069 [INFO] AdaptiveModeSampler initialized: weight_type=wasserstein, prior_type=constant, num_modes=7, ot_predictor=enabled
+2026-02-05 14:21:50,070 [INFO] AdaptiveModeSampler initialized: weight_type=wasserstein, prior_type=constant, num_modes=7, ot_predictor=enabled
+2026-02-05 14:21:50,071 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:21:50,071 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:21:50,071 [INFO] Recorded mode observation: obstacle 0, mode=decelerating, timestep=0, history_size=2
+2026-02-05 14:21:50,072 [INFO] AdaptiveModeSampler initialized: weight_type=wasserstein, prior_type=constant, num_modes=7, ot_predictor=disabled
+2026-02-05 14:21:50,072 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:21:50,072 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:21:50,072 [INFO] Recorded mode observation: obstacle 0, mode=decelerating, timestep=0, history_size=2
+2026-02-05 14:21:50,073 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=500, weight_type=wasserstein
+2026-02-05 14:21:50,075 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=200, weight_type=wasserstein
+2026-02-05 14:21:50,077 [INFO] AdaptiveModeSampler initialized: weight_type=frequency, prior_type=constant, num_modes=7, ot_predictor=enabled
+2026-02-05 14:21:50,077 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:21:50,077 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:21:50,078 [INFO] AdaptiveModeSampler initialized: weight_type=frequency, prior_type=constant, num_modes=7, ot_predictor=disabled
+2026-02-05 14:21:50,078 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:21:50,078 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:21:50,080 [INFO] AdaptiveModeSampler initialized: weight_type=frequency, prior_type=constant, num_modes=7, ot_predictor=enabled
+2026-02-05 14:21:50,080 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:21:50,080 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:22:15,399 [INFO] ✓ Polytope at disc 0, step 0: Reference position (0.000, 0.000) satisfies all 20 constraints
+2026-02-05 14:22:15,401 [WARNING] Step 0, disc 0: 20 constraints exceed per-step limit 3
+2026-02-05 14:22:15,403 [INFO] ✓ Polytope at disc 0, step 0: Reference position (0.000, 0.000) satisfies all 3 constraints
+2026-02-05 14:22:15,405 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=200, weight_type=wasserstein
+2026-02-05 14:22:15,405 [INFO] AdaptiveModeSampler initialized: weight_type=wasserstein, prior_type=constant, num_modes=7, ot_predictor=enabled
+2026-02-05 14:22:15,406 [INFO] AdaptiveModeSampler initialized: weight_type=wasserstein, prior_type=constant, num_modes=7, ot_predictor=enabled
+2026-02-05 14:22:15,406 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:22:15,407 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:22:15,407 [INFO] Recorded mode observation: obstacle 0, mode=decelerating, timestep=0, history_size=2
+2026-02-05 14:22:15,407 [INFO] AdaptiveModeSampler initialized: weight_type=wasserstein, prior_type=constant, num_modes=7, ot_predictor=disabled
+2026-02-05 14:22:15,408 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:22:15,408 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:22:15,408 [INFO] Recorded mode observation: obstacle 0, mode=decelerating, timestep=0, history_size=2
+2026-02-05 14:22:15,409 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=500, weight_type=wasserstein
+2026-02-05 14:22:15,412 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=200, weight_type=wasserstein
+2026-02-05 14:22:15,413 [INFO] AdaptiveModeSampler initialized: weight_type=frequency, prior_type=constant, num_modes=7, ot_predictor=enabled
+2026-02-05 14:22:15,413 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:22:15,413 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:22:15,415 [INFO] AdaptiveModeSampler initialized: weight_type=frequency, prior_type=constant, num_modes=7, ot_predictor=disabled
+2026-02-05 14:22:15,415 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:22:15,415 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:22:15,416 [INFO] AdaptiveModeSampler initialized: weight_type=frequency, prior_type=constant, num_modes=7, ot_predictor=enabled
+2026-02-05 14:22:15,416 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:22:15,416 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:28:18,740 [INFO] ✓ Polytope at disc 0, step 0: Reference position (0.000, 0.000) satisfies all 20 constraints
+2026-02-05 14:28:18,741 [WARNING] Step 0, disc 0: 20 constraints exceed per-step limit 3
+2026-02-05 14:28:18,742 [INFO] ✓ Polytope at disc 0, step 0: Reference position (0.000, 0.000) satisfies all 3 constraints
+2026-02-05 14:28:18,744 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=200, weight_type=wasserstein
+2026-02-05 14:28:18,745 [INFO] AdaptiveModeSampler initialized: weight_type=wasserstein, prior_type=constant, num_modes=7, ot_predictor=enabled
+2026-02-05 14:28:18,746 [INFO] AdaptiveModeSampler initialized: weight_type=wasserstein, prior_type=constant, num_modes=7, ot_predictor=enabled
+2026-02-05 14:28:18,746 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:28:18,746 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:28:18,746 [INFO] Recorded mode observation: obstacle 0, mode=decelerating, timestep=0, history_size=2
+2026-02-05 14:28:18,746 [INFO] AdaptiveModeSampler initialized: weight_type=wasserstein, prior_type=constant, num_modes=7, ot_predictor=disabled
+2026-02-05 14:28:18,747 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:28:18,747 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:28:18,747 [INFO] Recorded mode observation: obstacle 0, mode=decelerating, timestep=0, history_size=2
+2026-02-05 14:28:18,747 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=500, weight_type=wasserstein
+2026-02-05 14:28:18,749 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=200, weight_type=wasserstein
+2026-02-05 14:28:18,751 [INFO] AdaptiveModeSampler initialized: weight_type=frequency, prior_type=constant, num_modes=7, ot_predictor=enabled
+2026-02-05 14:28:18,751 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:28:18,751 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:28:18,752 [INFO] AdaptiveModeSampler initialized: weight_type=frequency, prior_type=constant, num_modes=7, ot_predictor=disabled
+2026-02-05 14:28:18,752 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:28:18,752 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:28:18,753 [INFO] AdaptiveModeSampler initialized: weight_type=frequency, prior_type=constant, num_modes=7, ot_predictor=enabled
+2026-02-05 14:28:18,753 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:28:18,753 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:28:56,340 [INFO] ✓ Polytope at disc 0, step 0: Reference position (0.000, 0.000) satisfies all 20 constraints
+2026-02-05 14:28:56,341 [WARNING] Step 0, disc 0: 20 constraints exceed per-step limit 3
+2026-02-05 14:28:56,342 [INFO] ✓ Polytope at disc 0, step 0: Reference position (0.000, 0.000) satisfies all 3 constraints
+2026-02-05 14:28:56,342 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=200, weight_type=wasserstein
+2026-02-05 14:28:56,343 [INFO] AdaptiveModeSampler initialized: weight_type=wasserstein, prior_type=constant, num_modes=7, ot_predictor=enabled
+2026-02-05 14:28:56,343 [INFO] AdaptiveModeSampler initialized: weight_type=wasserstein, prior_type=constant, num_modes=7, ot_predictor=enabled
+2026-02-05 14:28:56,343 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:28:56,343 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:28:56,343 [INFO] Recorded mode observation: obstacle 0, mode=decelerating, timestep=0, history_size=2
+2026-02-05 14:28:56,344 [INFO] AdaptiveModeSampler initialized: weight_type=wasserstein, prior_type=constant, num_modes=7, ot_predictor=disabled
+2026-02-05 14:28:56,344 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:28:56,344 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:28:56,344 [INFO] Recorded mode observation: obstacle 0, mode=decelerating, timestep=0, history_size=2
+2026-02-05 14:28:56,344 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=500, weight_type=wasserstein
+2026-02-05 14:28:56,346 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=200, weight_type=wasserstein
+2026-02-05 14:28:56,347 [INFO] AdaptiveModeSampler initialized: weight_type=frequency, prior_type=constant, num_modes=7, ot_predictor=enabled
+2026-02-05 14:28:56,347 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:28:56,347 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:28:56,347 [INFO] AdaptiveModeSampler initialized: weight_type=frequency, prior_type=constant, num_modes=7, ot_predictor=disabled
+2026-02-05 14:28:56,347 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:28:56,347 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:28:56,348 [INFO] AdaptiveModeSampler initialized: weight_type=frequency, prior_type=constant, num_modes=7, ot_predictor=enabled
+2026-02-05 14:28:56,348 [INFO] Created mode history for obstacle 0 with modes: ['constant_velocity', 'decelerating', 'accelerating', 'turn_left', 'turn_right', 'lane_change_left', 'lane_change_right']
+2026-02-05 14:28:56,348 [INFO] Recorded mode observation: obstacle 0, mode=constant_velocity, timestep=0, history_size=1
+2026-02-05 14:29:01,689 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=100, weight_type=wasserstein
+2026-02-05 14:29:01,689 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=100, weight_type=wasserstein
+2026-02-05 14:29:01,690 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=100, weight_type=wasserstein
+2026-02-05 14:29:01,690 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=100, weight_type=wasserstein
+2026-02-05 14:29:01,690 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=100, weight_type=wasserstein
+2026-02-05 14:29:01,691 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=200, weight_type=wasserstein
+2026-02-05 14:29:01,691 [INFO] Set reference distribution for mode 'constant_velocity' with 100 samples
+2026-02-05 14:29:01,691 [INFO] Set reference distribution for mode 'decelerating' with 100 samples
+2026-02-05 14:29:01,691 [INFO] Set reference distribution for mode 'accelerating' with 100 samples
+2026-02-05 14:29:01,691 [INFO] Set reference distribution for mode 'turn_left' with 100 samples
+2026-02-05 14:29:01,691 [INFO] Set reference distribution for mode 'turn_right' with 100 samples
+2026-02-05 14:29:01,691 [INFO] Set reference distribution for mode 'lane_change_left' with 100 samples
+2026-02-05 14:29:01,691 [INFO] Set reference distribution for mode 'lane_change_right' with 100 samples
+2026-02-05 14:29:01,691 [INFO] Created OT predictor with 7 reference mode distributions
+2026-02-05 14:29:01,692 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=100, weight_type=wasserstein
+2026-02-05 14:29:01,692 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=100, weight_type=wasserstein
+2026-02-05 14:29:01,692 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=100, weight_type=wasserstein
+2026-02-05 14:29:01,693 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=100, weight_type=wasserstein
+2026-02-05 14:29:01,694 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=100, weight_type=wasserstein
+2026-02-05 14:29:01,694 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=100, weight_type=wasserstein
+2026-02-05 14:29:01,694 [INFO] Set reference distribution for mode 'test_mode' with 50 samples
+2026-02-05 14:29:01,694 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=100, weight_type=wasserstein
+2026-02-05 14:29:01,695 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=100, weight_type=wasserstein
+2026-02-05 14:29:01,695 [INFO] Set reference distribution for mode 'ref_mode' with 10 samples
+2026-02-05 14:29:01,695 [INFO] OptimalTransportPredictor reset (reference distributions preserved)
+2026-02-05 14:29:01,695 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=100, weight_type=wasserstein
+2026-02-05 14:29:01,695 [INFO] Set reference distribution for mode 'ref_mode' with 10 samples
+2026-02-05 14:29:01,695 [INFO] OptimalTransportPredictor reset (reference distributions preserved)
+2026-02-05 14:29:01,695 [INFO] OptimalTransportPredictor fully reset
+2026-02-05 14:29:01,696 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=100, weight_type=wasserstein
+2026-02-05 14:29:01,696 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=200, weight_type=wasserstein
+2026-02-05 14:29:01,696 [INFO] Set reference distribution for mode 'constant_velocity' with 100 samples
+2026-02-05 14:29:01,696 [INFO] Set reference distribution for mode 'decelerating' with 100 samples
+2026-02-05 14:29:01,696 [INFO] Set reference distribution for mode 'accelerating' with 100 samples
+2026-02-05 14:29:01,696 [INFO] Set reference distribution for mode 'turn_left' with 100 samples
+2026-02-05 14:29:01,696 [INFO] Set reference distribution for mode 'turn_right' with 100 samples
+2026-02-05 14:29:01,697 [INFO] Set reference distribution for mode 'lane_change_left' with 100 samples
+2026-02-05 14:29:01,697 [INFO] Set reference distribution for mode 'lane_change_right' with 100 samples
+2026-02-05 14:29:01,697 [INFO] Created OT predictor with 7 reference mode distributions
+2026-02-05 14:29:01,697 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=200, weight_type=wasserstein
+2026-02-05 14:29:01,697 [INFO] Set reference distribution for mode 'constant_velocity' with 100 samples
+2026-02-05 14:29:01,697 [INFO] Set reference distribution for mode 'decelerating' with 100 samples
+2026-02-05 14:29:01,697 [INFO] Set reference distribution for mode 'accelerating' with 100 samples
+2026-02-05 14:29:01,697 [INFO] Set reference distribution for mode 'turn_left' with 100 samples
+2026-02-05 14:29:01,697 [INFO] Set reference distribution for mode 'turn_right' with 100 samples
+2026-02-05 14:29:01,697 [INFO] Set reference distribution for mode 'lane_change_left' with 100 samples
+2026-02-05 14:29:01,697 [INFO] Set reference distribution for mode 'lane_change_right' with 100 samples
+2026-02-05 14:29:01,697 [INFO] Created OT predictor with 7 reference mode distributions
+2026-02-05 14:29:01,697 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=200, weight_type=wasserstein
+2026-02-05 14:29:01,698 [INFO] Set reference distribution for mode 'constant_velocity' with 100 samples
+2026-02-05 14:29:01,698 [INFO] Set reference distribution for mode 'decelerating' with 100 samples
+2026-02-05 14:29:01,698 [INFO] Set reference distribution for mode 'accelerating' with 100 samples
+2026-02-05 14:29:01,698 [INFO] Set reference distribution for mode 'turn_left' with 100 samples
+2026-02-05 14:29:01,698 [INFO] Set reference distribution for mode 'turn_right' with 100 samples
+2026-02-05 14:29:01,698 [INFO] Set reference distribution for mode 'lane_change_left' with 100 samples
+2026-02-05 14:29:01,698 [INFO] Set reference distribution for mode 'lane_change_right' with 100 samples
+2026-02-05 14:29:01,698 [INFO] Created OT predictor with 7 reference mode distributions
+2026-02-05 14:29:01,698 [INFO] OptimalTransportPredictor initialized: epsilon=0.1, buffer_size=200, weight_type=wasserstein
+2026-02-05 14:29:01,698 [INFO] Set reference distribution for mode 'constant_velocity' with 100 samples
+2026-02-05 14:29:01,698 [INFO] Set reference distribution for mode 'decelerating' with 100 samples
+2026-02-05 14:29:01,699 [INFO] Set reference distribution for mode 'accelerating' with 100 samples
+2026-02-05 14:29:01,699 [INFO] Set reference distribution for mode 'turn_left' with 100 samples
+2026-02-05 14:29:01,699 [INFO] Set reference distribution for mode 'turn_right' with 100 samples
+2026-02-05 14:29:01,699 [INFO] Set reference distribution for mode 'lane_change_left' with 100 samples
+2026-02-05 14:29:01,699 [INFO] Set reference distribution for mode 'lane_change_right' with 100 samples
+2026-02-05 14:29:01,699 [INFO] Created OT predictor with 7 reference mode distributions

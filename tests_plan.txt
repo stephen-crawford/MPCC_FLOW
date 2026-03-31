@@ -1,0 +1,170 @@
+To demonstrate the **core contribution (OT mode learning reduces scenario mismatch under switching)**, you want tests that isolate *distribution shift* as the failure mode of standard scenario MPC — and then show OT fixes it **without blowing up conservatism or runtime**.
+
+Below is a tight test plan I’d actually run/write up, with the few metrics that will make reviewers happy.
+
+---
+
+## 1) The three experiments that best “prove the point”
+
+### A. Mode-switch distribution shift stress test (synthetic, controlled)
+
+**Goal:** show baseline scenario MPC violates the intended risk bound when the obstacle switches modes inside the safe horizon, and OT restores bounded risk.
+
+**Setup**
+
+* 2–4 obstacle “modes” with very different trajectory statistics (e.g., straight, braking, lateral cut-in, zig-zag).
+* Switching process is **non-Markov / adversarial-ish**: switch probability increases near intersections or near ego proximity.
+* Predictors at time (t) only “see” the current mode unless you add OT/history.
+
+**Compare (ablation)**
+
+1. **Base**: scenario MPCC with predictor (P_t) (no OT, no extremes).
+2. **History-only**: add past-realized extremes as hard constraints, but no OT reshaping.
+3. **OT-only**: OT reshaping (history mixture), no extremes injection.
+4. **OT + extremes**: your full method.
+
+**Report**
+
+* Empirical joint collision probability over horizon (Monte Carlo):
+  (\hat p_{\text{coll}}=\frac{1}{M}\sum_{j=1}^M \mathbf{1}[\text{collision in horizon}])
+* Constraint violation rate vs. target (\epsilon), ideally with a binomial CI.
+* “Missed mode” rate: fraction of test rollouts where the realized mode is absent from sampling support (baseline will be high).
+
+**Why reviewers buy it:** it’s a clean causal test: switching breaks i.i.d.-representativeness; OT restores support.
+
+---
+
+### B. Rare-mode / tail-event test (“needle in haystack”)
+
+**Goal:** show OT meaningfully improves safety when the dangerous behavior is rare.
+
+**Setup**
+
+* One “danger mode” occurs with probability 1–5% but causes near-certain collision if not anticipated.
+* Base predictor under-samples it.
+
+**Report**
+
+* Collision rate conditioned on rare mode occurrence (this is huge):
+  (\hat p(\text{coll} \mid \text{rare mode}))
+* False conservatism: average clearance, average speed/progress.
+
+**Why it’s compelling:** it’s exactly the regime where a mode-history OT mechanism is supposed to help.
+
+---
+
+### C. Real-time / tractability test under fixed safety target
+
+**Goal:** show you didn’t “buy safety with infinite computation.”
+
+**Report (per MPC step)**
+
+* solve time distribution (median, p90, p99)
+* feasibility rate
+* number of active constraints after pruning
+* how performance changes with (S) (scenario count) and (S_{\text{ext}})
+
+**Plot:** safety vs. runtime Pareto (baseline vs OT variants).
+
+---
+
+## 2) The minimum ablation table that communicates the contribution
+
+You only need a few rows, but they must separate **OT learning** from **hard extreme constraints**.
+
+| Variant       | Uses OT reshaping? | Uses realized-history extremes? | Expected behavior                             |
+| ------------- | -----------------: | ------------------------------: | --------------------------------------------- |
+| Base          |                  ✗ |                               ✗ | unsafe under switching                        |
+| Extremes only |                  ✗ |                               ✓ | safer but often overly conservative / brittle |
+| OT only       |                  ✓ |                               ✗ | improved safety with less conservatism        |
+| OT + extremes |                  ✓ |                               ✓ | best tail coverage, most robust               |
+
+If you can only run *one* ablation beyond baseline, run **OT-only**. That’s the core claim.
+
+---
+
+## 3) Metrics that actually show “OT mode learning” worked
+
+### Safety / chance-constraint fidelity
+
+* **Empirical joint collision probability** over safe horizon (the headline).
+* **Empirical violation probability** of half-space constraints (cheaper proxy).
+* **Calibration plot:** predicted risk vs observed risk (bin into predicted-risk deciles).
+
+### Distributional mismatch (most directly tied to OT)
+
+You want to quantify “sampling distribution matches realized behavior better.”
+
+Pick one:
+
+* **Wasserstein-2 distance** between predicted trajectory distribution and empirical realized trajectories in (\mathbb{R}^{2N_s}).
+* **Energy distance / MMD** (easy with samples; no density needed).
+* **Coverage metric:** fraction of realized trajectories that fall inside the ((1-\rho)) predicted region (e.g., ellipsoidal region in whitened space), before/after OT.
+
+Even a single plot like:
+**Mismatch metric vs time under switching** (baseline spikes; OT stays flat)
+is extremely persuasive.
+
+### Conservatism / performance
+
+* contouring error, lag error
+* average speed/progress
+* minimum clearance margin (or distribution of min clearance)
+* control smoothness
+
+### Efficiency
+
+* constraints active at optimum (support constraints)
+* pruning ratio
+* solve time
+
+---
+
+## 4) The best statistical tests to back the claims
+
+You don’t need fancy stats, just correct ones:
+
+* **Binomial proportion CI** for collision/violation rates (Wilson interval).
+* **McNemar’s test** if you run paired rollouts with same random seeds (collision yes/no differs across methods).
+* **Mann–Whitney U** for solve time distributions (non-Gaussian).
+* **Permutation test** for mismatch metrics (W2/MMD), if you want to be robust.
+
+Also: always report **number of rollouts** and seeds.
+
+---
+
+## 5) One “killer” figure layout (reviewer-friendly)
+
+If you can only make 3 figures:
+
+1. **Collision probability vs switching severity** (baseline blows up; OT stays under target).
+2. **Mismatch metric (W2/MMD) vs time** (baseline spikes at switches; OT tracks).
+3. **Safety–performance tradeoff**: collision rate vs progress (Pareto).
+
+---
+
+## 6) What scenarios/environments are best (if you want it to look realistic)
+
+* Merge/cut-in (lane change)
+* Intersection crossing (stop/go + turning)
+* Pedestrian-like stop/start lateral dithering
+  These naturally induce switching dynamics.
+
+---
+
+## 7) Small but important implementation checks
+
+These are “sanity tests” that prevent reviewers from poking holes:
+
+* **Non-anticipativity check:** extremes come only from past realized data, not from current sample batch.
+* **Ablate OT map quality:** compare exact OT (if small) vs entropic OT approximation—show similar safety.
+* **Buffer size sensitivity:** show OT still works for small history (e.g., 20–50 trajectories).
+
+---
+
+If you tell me:
+
+1. what simulator you’re using (or if it’s custom),
+2. typical (N_s), (S), (V), and how you store realized trajectories,
+
+I can turn this into a **concrete “Results” section plan** with exact plots + tables + parameter sweeps that match your paper’s notation and algorithm.

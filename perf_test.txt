@@ -1,0 +1,62 @@
+What to measure experimentally (so the “impact” is not just theoretical)
+
+You’ll want to show two curves as you vary 
+Sext
+S
+ext
+	​
+
+ (or 
+α
+α):
+
+Safety (empirical violation):
+
+V^=1M∑j=1M1{g(U⋆,δtest,j)>0},δtest,j∼Ptrue.
+V
+^
+=
+M
+1
+	​
+
+j=1
+∑
+M
+	​
+
+1{g(U
+⋆
+,δ
+test,j
+)>0},δ
+test,j
+∼P
+true
+	​
+
+.
+
+Use a “ground-truth” test distribution 
+Ptrue
+P
+true
+	​
+
+ that includes mode switching.
+
+Conservatism / performance:
+
+tracking cost increase,
+
+minimum clearance margin,
+
+solver feasibility rate,
+
+speed/progress.
+
+Then you can say:
+
+extremes injection decreases empirical violations under switching,
+
+but increases cost / reduces feasibility or speed.

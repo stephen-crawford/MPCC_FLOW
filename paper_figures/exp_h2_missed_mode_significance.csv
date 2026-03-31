@@ -1,0 +1,4 @@
+num_scenarios,base_collisions,dro_collisions,n10,n01,mcnemar_chi2,significant_p05
+10,10,6,6,2,2,no
+20,6,3,3,0,3,no
+40,7,7,5,5,0,no

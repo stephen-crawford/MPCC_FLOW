@@ -1,0 +1,27 @@
+{
+  "total_tests": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "total_time": 0.007157564163208008,
+  "timestamp": "2026-01-26T14:23:45.403875",
+  "test_results": {
+    "linearized_single_obstacle": {
+      "name": "linearized_single_obstacle",
+      "description": "Linearized halfspace constraints for obstacle avoidance",
+      "status": "failed",
+      "success": false,
+      "error": null,
+      "solve_times": [],
+      "avg_solve_time_ms": null,
+      "constraint_violations": 0,
+      "final_position": null,
+      "path_error": null,
+      "tags": [
+        "linearized",
+        "obstacle_avoidance"
+      ],
+      "elapsed_time": 0.007130622863769531
+    }
+  }
+}

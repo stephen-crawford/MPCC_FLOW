@@ -1,0 +1,68 @@
+# Minimal defaults for the MPCC stack (CasADi + contouring + obstacle constraints).
+# Override via `pympc.config.create_default_config`, YAML passed to ConfigManager, or env PYMPC_*.
+
+planner:
+  horizon: 20
+  timestep: 0.1
+  integrator_step: 0.1
+  max_obstacles: 10
+  robot:
+    radius: 0.5
+  road:
+    width: 7.0
+
+solver:
+  solver: casadi
+  shift_previous_solution_forward: true
+
+performance:
+  level: balanced
+  log_level: WARNING
+
+obstacle_constraint_type: scenario
+
+obstacle_constraint:
+  num_scenarios: 8
+  ego_radius: 0.5
+  obstacle_radius: 0.5
+  safety_margin: 0.1
+  enable_pruning: true
+  confidence_level: 0.95
+
+linearized_constraints:
+  ego_radius: 0.5
+  obstacle_radius: 0.5
+  safety_margin: 0.1
+  max_obstacles: 10
+  num_discs: 1
+  disc_radius: 0.5
+  use_slack: true
+
+contouring_constraints:
+  road_width: 4.0
+
+contouring_objective:
+  lag_weight: 1.0
+  contour_weight: 10.0
+  progress_weight: 0.5
+
+goal_objective:
+  weight: 5.0
+
+weights:
+  contour_weight: 5.0
+  contouring_lag_weight: 5.0
+  goal_weight: 10.0
+  goal_angle_weight: 1.0
+  goal_terminal_weight: 10.0
+  goal_terminal_angle: 1.0
+  acceleration_weight: 0.5
+  angular_velocity: 5.0
+  slack_weight: 5.0
+  velocity_tracking_weight: 3.0
+  reference_velocity: 2.0
+
+recording:
+  enable: false
+  file: planner_output
+  folder: recordings

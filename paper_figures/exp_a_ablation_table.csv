@@ -1,0 +1,9 @@
+variant,uses_ot,uses_dro,uses_adversarial,uses_sh,collision_rate,ci_lo,ci_hi,missed_mode_rate,avg_progress,avg_clearance,avg_solve_ms
+Base,no,no,no,no,0.11,0.07377,0.1609,0.2751,14.83,1.186,1.7
+DRO,no,yes,no,no,0.14,0.09867,0.1949,0.2803,12.51,1.222,1.7
+OT,yes,no,no,no,0.085,0.05375,0.1319,0.1913,14.86,1.223,1.6
+OT+DRO,yes,yes,no,no,0.125,0.08612,0.178,0.1873,12.19,1.226,1.7
+Base+SH,no,no,no,yes,0.065,0.03838,0.108,0.279,20.02,1.031,1.2
+OT+SH,yes,no,no,yes,0.055,0.03099,0.09579,0.1853,19.87,1.04,1.2
+OT+ADV,yes,yes,yes,no,0.105,0.06971,0.1552,0.1918,11.82,1.246,1.6
+OT+ADV+SH,yes,yes,yes,yes,0.08,0.04984,0.126,0.1831,19.88,1.02,1.2

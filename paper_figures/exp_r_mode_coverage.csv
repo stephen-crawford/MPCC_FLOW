@@ -1,0 +1,9 @@
+variant,mode_name,true_fraction,sampled_fraction,coverage_ratio
+Base,constant_velocity,0.2656,0.3426,1.2898
+Base,turn_left,0.2443,0.2430,0.9950
+Base,turn_right,0.2477,0.1965,0.7933
+Base,decelerating,0.2424,0.2179,0.8988
+OT,constant_velocity,0.2656,0.2858,1.0760
+OT,turn_left,0.2443,0.2558,1.0472
+OT,turn_right,0.2477,0.2190,0.8843
+OT,decelerating,0.2424,0.2394,0.9874

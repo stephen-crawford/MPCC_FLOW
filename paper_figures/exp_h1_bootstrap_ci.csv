@@ -1,0 +1,5 @@
+comparison,mean_diff,ci_lo,ci_hi
+Base_vs_OT+ADV+SH,0.0151,-0.0350,0.0650
+Base_vs_OT,0.0000,-0.0500,0.0500
+Base_vs_DRO,-0.0300,-0.0800,0.0200
+Base_vs_OT+DRO,-0.0250,-0.0750,0.0250

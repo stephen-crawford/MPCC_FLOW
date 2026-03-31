@@ -1,0 +1,10 @@
+test,comparison,statistic,value,p_value,significant_005
+McNemar,Base_vs_OT+Extremes,chi2,42.31,7.796e-11,yes
+McNemar,Base_vs_OT,chi2,0,1,no
+McNemar,Base_vs_Extremes,chi2,45.86,1.269e-11,yes
+z-test,Base_vs_OT+Extremes,z,-6.436,1.23e-10,yes
+cohens_h,Base_vs_OT+Extremes,h,-0.2393,NA,NA
+z-test,Base_vs_OT,z,0.08149,0.935,no
+cohens_h,Base_vs_OT,h,0.002976,NA,NA
+z-test,Base_vs_Extremes,z,-6.861,6.852e-12,yes
+cohens_h,Base_vs_Extremes,h,-0.2556,NA,NA

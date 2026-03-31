@@ -1,0 +1,3 @@
+num_discs,collision_rate,ci_lo,ci_hi,avg_clearance,avg_constraints,avg_solve_ms,num_rollouts
+1,0.0500,0.0089,0.2361,1.5405,0,2.23,20
+3,0.4000,0.2188,0.6134,0.9955,0,5.53,20

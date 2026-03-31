@@ -1,0 +1,5 @@
+variant,uses_ot,uses_extremes,collision_rate,ci_lo,ci_hi,missed_mode_rate,avg_progress,avg_clearance,avg_solve_ms
+Base,no,no,0.03,0.02109,0.0425,0.2778,20.05,1.038,1.4
+Extremes,no,yes,0.153,0.132,0.1766,0.2813,20.03,0.9751,1.6
+OT,yes,no,0.023,0.01537,0.03428,0.1863,20.06,1.045,1.4
+OT+Extremes,yes,yes,0.144,0.1236,0.1671,0.1901,19.98,0.9761,1.6

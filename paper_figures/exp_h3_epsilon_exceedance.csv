@@ -1,0 +1,5 @@
+variant,n_rollouts,collisions,collision_rate,epsilon,binomial_p_greater,binomial_p_leq,exceeds_epsilon,within_epsilon
+Base,1500,78,0.052,0.05,0.383548,0.660799,no,no
+Extremes,1500,195,0.13,0.05,8.43633e-46,1,yes,yes
+OT,1500,74,0.04933,0.05,0.570523,0.476383,no,no
+OT+Extremes,1500,198,0.132,0.05,5.04512e-48,1,yes,yes

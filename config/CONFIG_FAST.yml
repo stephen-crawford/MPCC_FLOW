@@ -1,0 +1,22 @@
+# Shorter horizon / lighter settings for faster iteration (optional).
+
+planner:
+  horizon: 8
+  timestep: 0.1
+  max_obstacles: 5
+
+solver:
+  solver: casadi
+  shift_previous_solution_forward: true
+
+performance:
+  level: fast
+
+obstacle_constraint_type: scenario
+
+obstacle_constraint:
+  num_scenarios: 4
+  ego_radius: 0.5
+  obstacle_radius: 0.5
+  safety_margin: 0.1
+  enable_pruning: true

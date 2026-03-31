@@ -1,0 +1,17 @@
+metric,value
+paired_rollouts,200
+base_collisions,16
+ot_collisions,16
+dro_collisions,22
+ot_dro_collisions,21
+ot_adv_sh_collisions,13
+mcnemar_n10,15
+mcnemar_n01,12
+mcnemar_chi2,0.1481
+mcnemar_significant,no
+bootstrap_mean_delta,0.01507
+bootstrap_ci_lo,-0.035
+bootstrap_ci_hi,0.065
+cohens_h,0.05792
+risk_ratio,0.8125
+non_anticipativity,passed

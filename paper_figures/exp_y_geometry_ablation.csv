@@ -1,0 +1,6 @@
+ground_cost,collision_rate,ci_lo,ci_hi,missed_mode_rate,avg_progress,avg_clearance,p99_solve_ms
+W2-Euclidean,0.0770,0.0620,0.0952,0.1816,12.4610,1.3850,9.2306
+Random-Permuted,0.0720,0.0576,0.0897,0.1824,12.5080,1.3848,9.0102
+Constant,0.0620,0.0487,0.0787,0.1819,12.0159,1.3848,8.9964
+Flat-NoGeom,0.0760,0.0611,0.0941,0.1806,12.4337,1.3973,9.0332
+Mean-Only,0.0660,0.0522,0.0831,0.1809,12.4870,1.4000,9.0347
