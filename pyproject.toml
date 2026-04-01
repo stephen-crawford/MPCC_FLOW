@@ -69,7 +69,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["pympc", "planning", "modules", "solver", "utils", "network_emulation"]
+packages = ["pympc", "planning", "modules", "solver", "utils", "network_emulation", "congestion_control"]
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -80,6 +80,7 @@ include = [
     "/utils",
     "/config",
     "/network_emulation",
+    "/congestion_control",
     "/scripts",
     "/third_party",
 ]
@@ -108,7 +109,7 @@ markers = [
 
 # Coverage configuration
 [tool.coverage.run]
-source = ["pympc", "planning", "modules", "solver", "network_emulation"]
+source = ["pympc", "planning", "modules", "solver", "network_emulation", "congestion_control"]
 branch = true
 omit = [
     "*/tests/*",
@@ -146,7 +147,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["pympc", "planning", "modules", "solver", "utils", "network_emulation"]
+known-first-party = ["pympc", "planning", "modules", "solver", "utils", "network_emulation", "congestion_control"]
 
 # Black formatter configuration
 [tool.black]
