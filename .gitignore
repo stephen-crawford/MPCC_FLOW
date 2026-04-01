@@ -13,3 +13,16 @@ htmlcov/
 .ruff_cache/
 *.swp
 .DS_Store
+results/
+debug.log
+jit_tmp*
+tmp_casadi_compiler_*
+*.o
+*.so
+*.tex
+*.aux
+*.log
+*.bbl
+*.blg
+*.pdf
+*.synctex*

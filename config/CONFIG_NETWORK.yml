@@ -1,0 +1,61 @@
+planner:
+  horizon: 15
+  timestep: 0.05
+  integrator_step: 0.05
+
+dynamics: network
+
+network:
+  rtt_prop: 0.025
+  tau_rtt: 0.1
+  tau_tput: 0.1
+  rate_max: 50.0e6
+  q_max: 500000
+  rtt_max: 0.200
+  bw_max: 100.0e6
+  estimator: ema
+  ema_alpha: 0.3
+
+solver:
+  solver: casadi
+  shift_previous_solution_forward: true
+
+performance:
+  level: balanced
+  log_level: WARNING
+
+obstacle_constraint_type: scenario
+obstacle_constraint:
+  num_scenarios: 0
+  ego_radius: 0.0
+  obstacle_radius: 0.0
+  safety_margin: 0.0
+
+contouring_objective:
+  lag_weight: 1.0
+  contour_weight: 10.0
+  progress_weight: 0.5
+
+contouring_constraints:
+  road_width: 0.100
+
+goal_objective:
+  weight: 0.0
+
+weights:
+  contour_weight: 10.0
+  contouring_lag_weight: 1.0
+  goal_weight: 0.0
+  goal_angle_weight: 0.0
+  goal_terminal_weight: 0.0
+  goal_terminal_angle: 0.0
+  acceleration_weight: 0.1
+  angular_velocity: 0.0
+  slack_weight: 5.0
+  velocity_tracking_weight: 0.0
+  reference_velocity: 0.0
+
+recording:
+  enable: false
+  file: network_output
+  folder: recordings
