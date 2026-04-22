@@ -1,0 +1,565 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\title{Design of Mahimahi-Inspired Congestion-Control Environments}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Overview}
+
+The repository defines four scenario-shaped Gymnasium environments for
+congestion-control experiments:
+
+\begin{enumerate}[label=(\arabic*)]
+  \item a stable wired bottleneck,
+  \item a cellular trace with bursty capacity variation,
+  \item a LEO-inspired trace with abrupt delay and bandwidth changes, and
+  \item a multi-flow fairness stress test.
+\end{enumerate}
+
+Each scenario defaults to a fast in-process simulator, but can also be run
+through the real \texttt{mm-link} subprocess adapter by passing
+\texttt{use\_mahimahi=True}. In simulator mode, the environments model the same
+core signals that Mahimahi-style experiments expose: bandwidth, propagation
+delay, queueing delay, packet loss, throughput, and multi-flow sharing. In real
+Mahimahi mode, the scenario classes delegate to scenario-shaped wrappers around
+\texttt{MahimahiSubprocessEnv}, preserving the same action and observation
+interfaces while launching \texttt{mm-link} with scenario-specific trace files.
+
+\section{Shared Single-Flow Design}
+
+The wired, cellular, and LEO environments share a single-flow bottleneck model
+in simulator mode. At each step, the agent chooses a target sending rate:
+
+\[
+  a_t = r_t \quad \text{in Mbps.}
+\]
+
+The environment replays a link trace with a capacity \(C_t\), propagation delay
+\(D_t\), and fixed step duration. If the selected sending rate exceeds the
+available service rate, data accumulates in a finite bottleneck queue. Once the
+queue is full, excess traffic is dropped.
+
+The single-flow observation is seven-dimensional:
+
+\[
+o_t =
+\left[
+\frac{r_t}{r_{\max}},
+\frac{x_t}{r_{\max}},
+\frac{C_t}{r_{\max}},
+\frac{D_t}{D_{\max}},
+\frac{Q_t}{Q_{\max}},
+L_t,
+B_t
+\right],
+\]
+
+where \(r_t\) is the chosen send rate, \(x_t\) is delivered throughput, \(C_t\)
+is link capacity, \(D_t\) is propagation delay, \(Q_t\) is queueing delay,
+\(L_t\) is loss fraction, and \(B_t\) is normalized queue occupancy.
+
+The reward is:
+
+\[
+R_t = x_t - \lambda_D (D_t + Q_t) - \lambda_L L_t.
+\]
+
+This reward encourages high delivered throughput while penalizing round-trip
+latency and loss. The exact delay and loss penalties can vary by scenario. The
+default single-flow loss penalty is \(\lambda_L = 10.0\). The default delay
+penalty is \(\lambda_D = 0.015\), except for the LEO-inspired scenario, which
+lowers it to \(\lambda_D = 0.012\).
+
+\subsection{Optional MPCC-Style Reward}
+
+The scenarios also support an optional MPCC-style reward by setting
+\texttt{reward\_mode=mpcc}. The default reward above remains available as
+\texttt{reward\_mode=default}; MPCC mode changes only the scalar reward and
+diagnostic fields in \texttt{info}, not the action or observation spaces.
+
+The MPCC reward uses smoothed measurements \(\hat{T}\) and \(\hat{R}\) for
+throughput and RTT. The simulator updates these smoothed values with first-order
+filters using configurable time constants \(\tau_T\) and \(\tau_R\). In
+single-flow simulator mode, \(R_0\) is the current propagation delay. In the
+multi-flow simulator, which has no explicit propagation-delay trace, \(R_0\)
+defaults to \(20\) ms and can be overridden with
+\texttt{mpcc\_base\_rtt\_ms}.
+
+The reference curve in throughput--RTT space is:
+
+\[
+\Gamma(\theta) =
+\left(C\theta,\; R_0 + \alpha\theta^2\right),
+\quad
+\theta = \mathrm{clip}\left(\frac{\hat{T}}{C}, 0, 1\right).
+\]
+
+The unit tangent is:
+
+\[
+\mathbf{t}(\theta) =
+\frac{(C,\;2\alpha\theta)}
+{\sqrt{C^2 + 4\alpha^2\theta^2}}
+= (t_T,t_R).
+\]
+
+Given \(\Gamma(\theta)=(\Gamma_T,\Gamma_R)\), the contouring and lag errors are:
+
+\[
+e_c = t_R(\hat{T}-\Gamma_T) - t_T(\hat{R}-\Gamma_R),
+\]
+
+\[
+e_\ell = t_T(\hat{T}-\Gamma_T) + t_R(\hat{R}-\Gamma_R).
+\]
+
+The MPCC stage cost implemented by the environments is:
+
+\[
+\ell_{\mathrm{mpcc}} =
+w_c e_c^2
++ w_\ell e_\ell^2
++ w_d [\hat{R}-R^*]_+^2
++ w_u \frac{\sum_i (s_{i,t}-s_{i,t-1})^2}{s_{\max}^2}
++ w_{\mathrm{loss}} L_t^2
+- w_p
+\frac{\hat{T}/C}{\hat{R}/R_0}.
+\]
+
+Gymnasium maximizes reward, so the environment returns:
+
+\[
+R_t^{\mathrm{mpcc}} = -\ell_{\mathrm{mpcc}}.
+\]
+
+The default MPCC weights are intentionally modest because the geometric errors
+are measured in physical units:
+
+\[
+w_c=10^{-3},\quad
+w_\ell=10^{-3},\quad
+w_d=10^{-4},\quad
+w_p=1.0,\quad
+w_u=0.1,\quad
+w_{\mathrm{loss}}=0.
+\]
+
+If \(\alpha\) is not provided, it defaults to half the queue-delay scale. If
+\(R^*\) is not provided, it defaults to \(R_0\) plus one quarter of the
+queue-delay scale.
+
+The \texttt{info} dictionary exposes MPCC terms for debugging and analysis:
+
+\begin{itemize}
+  \item \url{mpcc_stage_cost}, \url{mpcc_contour_error}, and
+        \url{mpcc_lag_error};
+  \item \url{mpcc_power}, \url{mpcc_smoothing_penalty}, and
+        \url{mpcc_theta};
+  \item \url{mpcc_smoothed_throughput_mbps} and
+        \url{mpcc_smoothed_rtt_ms}.
+\end{itemize}
+
+\subsection{Real Mahimahi Single-Flow Mode}
+
+When \texttt{use\_mahimahi=True}, the single-flow scenarios instantiate
+\texttt{SingleFlowMahimahiScenarioEnv}. This wrapper delegates stepping to
+\texttt{MahimahiSubprocessEnv} with one action dimension, then maps the
+adapter's measurement dictionary back into the seven-dimensional scenario
+observation. Since a real controller may report queueing delay without explicit
+queue occupancy, the final queue-related observation slot is represented by
+normalized queueing delay in this mode.
+
+The default controller command is:
+
+\begin{verbatim}
+python examples/mm_link_json_controller.py
+\end{verbatim}
+
+The wrapper forwards \texttt{controller\_cmd}, \texttt{mahimahi\_cmd},
+\texttt{timeout\_s}, \texttt{restart\_on\_reset}, and \texttt{render\_mode} to
+the subprocess adapter. In \texttt{reward\_mode=mpcc}, the wrapper replaces the
+adapter's default reward with the same MPCC reward calculation using the
+measurements reported by the controller.
+
+\section{Stable Wired Bottleneck}
+
+\textbf{Environment ID:} \texttt{MahiWiredBottleneck-v0}
+
+\textbf{Class:} \texttt{WiredBottleneckEnv}
+
+\subsection{Design Goal}
+
+This environment is a stationary sanity-check task. The optimal behavior should
+be easy to understand: send near the fixed bottleneck rate, avoid persistent
+oversending, and keep delay/loss low.
+
+\subsection{Configuration}
+
+\begin{itemize}
+  \item Capacity: \(10\) Mbps
+  \item Propagation delay: \(20\) ms
+  \item Step duration: \(100\) ms
+  \item Queue size: \(150\) ms
+  \item Maximum send rate: \(20\) Mbps
+  \item Real Mahimahi traces: \texttt{mahimahi/12mbps.trace} for both uplink
+        and downlink
+\end{itemize}
+
+\subsection{Rationale}
+
+A fixed \(10\) Mbps link creates a clean, stationary bottleneck. The low
+\(20\) ms propagation delay resembles a wired path rather than a cellular or
+satellite path. The queue is intentionally modest: large enough to permit
+transient overshoot, but small enough that persistent oversending produces
+visible queueing delay and loss. The \(20\) Mbps maximum action lets the agent
+overshoot by a factor of two, so it can learn the cost of aggression.
+
+\subsection{Expected Policy}
+
+A good policy should converge to sending close to \(10\) Mbps, with low loss and
+low queueing delay.
+
+\section{Cellular Bursty Capacity}
+
+\textbf{Environment ID:} \texttt{MahiCellularBursty-v0}
+
+\textbf{Class:} \texttt{CellularBurstyEnv}
+
+\subsection{Design Goal}
+
+This environment represents a cellular link where radio conditions cause sharp
+capacity variation. The agent must adapt to bursts and collapses without filling
+the queue.
+
+\subsection{Capacity Trace}
+
+\[
+[8.0, 7.5, 3.0, 1.2, 2.0, 12.0, 15.0, 6.0, 4.0, 2.2,
+1.0, 9.0, 14.0, 18.0, 5.0, 2.5, 1.5, 7.0, 11.0, 4.5]
+\]
+
+\subsection{Delay Trace}
+
+\[
+[55, 58, 70, 95, 85, 60, 50, 65, 78, 90,
+110, 62, 54, 48, 72, 88, 105, 68, 58, 76]
+\]
+
+\subsection{Rationale}
+
+Capacity ranges from roughly \(1\) Mbps to \(18\) Mbps. Low-capacity periods
+punish aggressive sending, while high-capacity bursts reward rapid utilization.
+The delay trace rises during weaker-capacity periods to mimic cellular
+instability and buffer pressure. The queue size is \(300\) ms, larger than the
+wired queue, because cellular paths often exhibit deeper and more variable
+buffering.
+
+In real Mahimahi mode, this scenario uses
+\texttt{mahimahi/traces/TMobile-LTE-driving.up} as the default uplink trace and
+\texttt{mahimahi/traces/TMobile-LTE-driving.down} as the default downlink trace.
+The default maximum send rate is \(30\) Mbps.
+
+\subsection{Expected Policy}
+
+A good policy should increase its sending rate during high-capacity bursts and
+back off during collapses, while avoiding persistent cellular queue buildup.
+
+\section{LEO-Inspired Satellite Trace}
+
+\textbf{Environment ID:} \texttt{MahiLeoSatellite-v0}
+
+\textbf{Class:} \texttt{LeoSatelliteEnv}
+
+\subsection{Design Goal}
+
+This environment models abrupt bandwidth and propagation-delay shifts inspired
+by low-Earth-orbit satellite networking. It is not a detailed orbital model;
+the goal is to stress robustness to sudden regime changes.
+
+\subsection{Capacity Trace}
+
+\[
+[35, 35, 32, 8, 6, 45, 48, 12, 10, 9,
+50, 52, 18, 15, 4, 4, 30, 42, 46, 7]
+\]
+
+\subsection{Delay Trace}
+
+\[
+[35, 36, 38, 80, 95, 42, 36, 75, 88, 92,
+40, 34, 65, 70, 120, 125, 55, 44, 38, 100]
+\]
+
+\subsection{Rationale}
+
+The capacity trace includes high-throughput windows near \(50\) Mbps and sudden
+collapses to \(4\)--\(8\) Mbps. The delay trace includes abrupt jumps from
+roughly \(35\) ms to more than \(120\) ms. These shifts are meant to mimic the
+kind of behavior that can arise from satellite handoff, path geometry changes,
+obstruction, or beam transitions.
+
+The delay penalty is slightly lower than in some other scenarios:
+
+\[
+\lambda_D = 0.012.
+\]
+
+This prevents the policy from becoming overly conservative in a setting where
+propagation delay variation is inherent.
+
+In real Mahimahi mode, this scenario uses
+\texttt{mahimahi/traces/Verizon-LTE-short.up} as the default uplink trace and
+\texttt{mahimahi/traces/Verizon-LTE-short.down} as the default downlink trace.
+The default maximum send rate is \(60\) Mbps.
+
+\subsection{Expected Policy}
+
+A good policy should exploit high-capacity windows while remaining robust to
+sudden bandwidth drops and delay jumps.
+
+\section{Multi-Flow Fairness Stress Test}
+
+\textbf{Environment ID:} \texttt{MahiMultiFlowFairness-v0}
+
+\textbf{Class:} \texttt{MultiFlowFairnessEnv}
+
+\subsection{Design Goal}
+
+This environment tests whether a controller can balance total throughput and
+fairness when multiple flows share a single bottleneck.
+
+\subsection{Default Configuration}
+
+\begin{itemize}
+  \item Number of flows: \(3\)
+  \item Shared bottleneck capacity: \(12\) Mbps
+  \item Maximum send rate per flow: \(15\) Mbps
+  \item Queue size: \(200\) ms
+  \item Real Mahimahi traces: \texttt{mahimahi/12mbps.trace} for both uplink
+        and downlink
+\end{itemize}
+
+\subsection{Action}
+
+The action is a vector of per-flow sending rates:
+
+\[
+a_t = [r_{1,t}, r_{2,t}, r_{3,t}].
+\]
+
+\subsection{Observation}
+
+For \(N\) flows, the observation is:
+
+\[
+o_t =
+\left[
+\frac{r_{1,t}}{r_{\max}}, \ldots, \frac{r_{N,t}}{r_{\max}},
+\frac{x_{1,t}}{r_{\max}}, \ldots, \frac{x_{N,t}}{r_{\max}},
+\frac{C}{r_{\max}},
+B_t,
+L_t,
+J_t
+\right],
+\]
+
+where \(J_t\) is Jain's fairness index.
+
+In simulator mode, \(B_t\) is normalized queue occupancy. In real Mahimahi
+mode, the corresponding slot is normalized queueing delay, because the
+subprocess adapter may not receive an explicit queue occupancy measurement from
+the controller.
+
+\subsection{Reward}
+
+The reward combines total throughput, fairness, delay, and loss:
+
+\[
+R_t =
+\sum_{i=1}^{N} x_{i,t}
++ \lambda_F J_t
+- \lambda_D Q_t
+- \lambda_L L_t.
+\]
+
+The default fairness weight is:
+
+\[
+\lambda_F = 8.0.
+\]
+
+The default delay and loss penalties are \(\lambda_D = 0.015\) and
+\(\lambda_L = 4.0\).
+
+Jain's fairness index is:
+
+\[
+J_t =
+\frac{\left(\sum_i x_{i,t}\right)^2}
+{N \sum_i x_{i,t}^2}.
+\]
+
+In \texttt{reward\_mode=mpcc}, the multi-flow environment applies the same
+throughput--RTT MPCC objective to aggregate throughput and shared queueing
+delay. It additionally adds a fair-share penalty:
+
+\[
+\ell_{\mathrm{fair}} =
+w_f \sum_{i=1}^{N}
+\left(s_{i,t} - \frac{C}{N}\right)^2.
+\]
+
+This term biases each sender toward its nominal share of the bottleneck
+capacity. The default MPCC fair-share weight is:
+
+\[
+w_f = 10^{-2}.
+\]
+
+The total MPCC reward for the multi-flow scenario is:
+
+\[
+R_t^{\mathrm{mpcc,multi}} =
+-\left(\ell_{\mathrm{mpcc}} + \ell_{\mathrm{fair}}\right),
+\]
+
+where \(\ell_{\mathrm{mpcc}}\) includes the contouring, lag, delay, power,
+smoothing, and optional loss terms defined in the shared MPCC reward section.
+The \texttt{info} dictionary includes \texttt{mpcc\_fairness\_penalty} in this
+mode.
+
+\subsection{Rationale}
+
+If the reward only used total throughput, an agent could learn unfair
+allocations where one flow dominates. Jain's fairness term rewards equal
+sharing. Since each flow can request up to \(15\) Mbps but the shared bottleneck
+is only \(12\) Mbps, the combined action can dramatically oversubscribe the
+link. This forces the agent to learn both rate control and fair allocation.
+
+\subsection{Expected Policy}
+
+A good policy should keep aggregate sending near the shared capacity, distribute
+throughput roughly equally across flows, maintain high Jain fairness, and avoid
+queue buildup and loss.
+
+\subsection{Real Mahimahi Multi-Flow Mode}
+
+When \texttt{use\_mahimahi=True}, \texttt{MultiFlowFairnessEnv} delegates to
+\texttt{MultiFlowMahimahiScenarioEnv}. The wrapper configures
+\texttt{MahimahiSubprocessEnv} with \texttt{action\_dim = N}, then reconstructs
+per-flow throughput observations from the controller's
+\texttt{throughputs\_mbps} field when available. If only aggregate throughput is
+reported, the wrapper distributes it across flows in proportion to the chosen
+send rates before computing Jain's fairness index. In
+\texttt{reward\_mode=mpcc}, the wrapper computes the MPCC reward from the
+reported aggregate or reconstructed per-flow throughput, queueing delay, RTT,
+and capacity measurements.
+
+\section{Comparison}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+Environment & Main Challenge & Action Space \\
+\midrule
+\texttt{MahiWiredBottleneck-v0} & Stable bottleneck convergence & One send rate \\
+\texttt{MahiCellularBursty-v0} & Bursty capacity adaptation & One send rate \\
+\texttt{MahiLeoSatellite-v0} & Abrupt bandwidth/delay shifts & One send rate \\
+\texttt{MahiMultiFlowFairness-v0} & Shared bottleneck fairness & Per-flow send rates \\
+\bottomrule
+\end{tabular}
+\caption{Summary of the four scenario environments.}
+\end{table}
+
+\section{Real Mahimahi Adapter}
+
+The scenario environments use \texttt{MahimahiSubprocessEnv} internally when
+\texttt{use\_mahimahi=True}. The adapter connects to Mahimahi by launching:
+
+\begin{verbatim}
+mm-link uplink.trace downlink.trace -- <controller command>
+\end{verbatim}
+
+The Gym environment communicates with the controller process over JSON lines.
+At each step, the environment writes an action to the controller's standard
+input:
+
+\begin{verbatim}
+{"type": "action", "step": 0, "send_rates_mbps": [4.0]}
+\end{verbatim}
+
+The controller must print one measurement object to standard output:
+
+\begin{verbatim}
+{"throughput_mbps": 3.8, "rtt_ms": 45.0, "queue_delay_ms": 5.0,
+ "loss_fraction": 0.0, "capacity_mbps": 10.0}
+\end{verbatim}
+
+This adapter is intentionally generic. The controller command can be a Python
+shim, a compiled congestion-control binary, or a script that manages a real
+sender and receiver inside the Mahimahi shell. It remains an internal building
+block for the four scenario environments rather than a separately registered
+Gymnasium environment.
+
+The built-in scenario wrappers use the following default trace files for real
+Mahimahi runs:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{p{0.31\linewidth}p{0.29\linewidth}p{0.29\linewidth}}
+\toprule
+Environment & Uplink trace & Downlink trace \\
+\midrule
+\texttt{MahiWiredBottleneck-v0} & \url{mahimahi/12mbps.trace} & \url{mahimahi/12mbps.trace} \\
+\texttt{MahiCellularBursty-v0} & \url{mahimahi/traces/TMobile-LTE-driving.up} & \url{mahimahi/traces/TMobile-LTE-driving.down} \\
+\texttt{MahiLeoSatellite-v0} & \url{mahimahi/traces/Verizon-LTE-short.up} & \url{mahimahi/traces/Verizon-LTE-short.down} \\
+\texttt{MahiMultiFlowFairness-v0} & \url{mahimahi/12mbps.trace} & \url{mahimahi/12mbps.trace} \\
+\bottomrule
+\end{tabular}
+\caption{Default real Mahimahi trace files used by the scenario wrappers.}
+\end{table}
+
+Mahimahi trace reminder: \texttt{mm-link} traces are packet-delivery schedules,
+where each line is a delivery opportunity timestamp for an MTU-sized packet.
+They are not simple \texttt{duration\_ms capacity\_mbps} rows. The in-process
+simulator traces use Python arrays or simulator-specific trace formats, while
+real Mahimahi runs should use Mahimahi-compatible uplink and downlink trace
+files.
+
+\section{Scenario Configuration Direction}
+
+A natural next step is to move the remaining hard-coded scenario parameters into
+configuration files that can be consumed by both the simulator and the real
+Mahimahi subprocess wrapper. For example:
+
+\begin{verbatim}
+name: cellular_bursty
+capacity_trace: ...
+delay_trace: ...
+queue_size_ms: 300
+flows: 1
+reward:
+  mode: mpcc
+  contour_weight: 0.001
+  lag_weight: 0.001
+  delay_weight: 0.0001
+  power_weight: 1.0
+  smoothing_weight: 0.1
+  fairness_weight: 0.01
+\end{verbatim}
+
+This would allow policies to be trained quickly in simulation and then evaluated
+against real \texttt{mm-link} experiments with the same scenario definitions.
+
+\end{document}

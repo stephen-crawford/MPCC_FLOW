@@ -13,3 +13,8 @@ htmlcov/
 .ruff_cache/
 *.swp
 .DS_Store
+
+models/
+plots/
+runs/
+.codex/
