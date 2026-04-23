@@ -109,6 +109,13 @@ class Flow:
             # 3. Dequeue delivered packets
             deliveries = link.dequeue(self._current_time_s)
 
+            # 3a. Pass link state to AP-assisted CCAs (e.g. ABC)
+            if hasattr(cca, 'update_link_state'):
+                cca.update_link_state(
+                    capacity_bps=link.instantaneous_rate_bps(self._current_time_s),
+                    queue_bytes=link.queue_occupancy_bytes(),
+                )
+
             # 4. Process deliveries whose ACK time has passed
             for delivery in deliveries:
                 if delivery.ack_time_s <= self._current_time_s:

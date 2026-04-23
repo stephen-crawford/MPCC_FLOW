@@ -11,6 +11,9 @@ network:
   rtt_target: 0.050
   q_max: 200000
   n_flows: 1
+  # Path-progress-rate cap (units 1/s). With dt=20 ms and v_theta_max=5, the
+  # planner can move at most 0.1 of the curve per step.
+  v_theta_max: 5.0
 
 weights:
   contour_weight: 50.0
@@ -19,3 +22,6 @@ weights:
   power_weight: 0.1
   acceleration_weight: 0.5
   fairness_weight: 0.0
+  # Progress reward (paper Sec. IV). w_theta > 0 is required for the
+  # controller to choose non-zero v_theta; at 0 it parks at theta=0.
+  theta_progress_weight: 10.0

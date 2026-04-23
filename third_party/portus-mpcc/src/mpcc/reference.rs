@@ -2,6 +2,11 @@
 //!     Gamma(theta) = ( C * theta, R_0 + alpha * theta^2 )
 //! with unit tangent
 //!     t_hat(theta) = (C, 2 alpha theta) / |(C, 2 alpha theta)|
+//!
+//! The path parameter `theta` is treated as an independent optimization
+//! variable (see solver.rs), not as a function of the current throughput.
+//! This preserves the geometric tracking problem — contouring error stays
+//! orthogonal to the curve, lag error stays along it.
 
 /// Reference operating point at progress theta.
 pub fn gamma(theta: f64, bw: f64, rtt_prop: f64, alpha: f64) -> (f64, f64) {
@@ -18,11 +23,18 @@ pub fn tangent(theta: f64, bw: f64, alpha: f64) -> (f64, f64) {
     (tt / n, tr / n)
 }
 
-/// Contouring and lag errors (paper Eq. 6a, 6b) at an operating point.
-pub fn errors(
-    tput: f64, rtt: f64, bw: f64, rtt_prop: f64, alpha: f64,
+/// Contouring and lag errors at an operating point (tput, rtt) relative to the
+/// reference point Gamma(theta). `theta` is the independent path parameter;
+/// the caller supplies it (typically from the solver's decision variable,
+/// falling back to `tput/C` only in diagnostic/metric code paths).
+pub fn errors_at_theta(
+    tput: f64,
+    rtt: f64,
+    theta: f64,
+    bw: f64,
+    rtt_prop: f64,
+    alpha: f64,
 ) -> (f64, f64) {
-    let theta = (tput / bw.max(1.0)).clamp(0.0, 1.0);
     let (ref_t, ref_r) = gamma(theta, bw, rtt_prop, alpha);
     let (tx, ty) = tangent(theta, bw, alpha);
     let dx = tput - ref_t;

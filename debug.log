@@ -160,3 +160,51 @@
 2026-02-05 14:29:01,699 [INFO] Set reference distribution for mode 'lane_change_left' with 100 samples
 2026-02-05 14:29:01,699 [INFO] Set reference distribution for mode 'lane_change_right' with 100 samples
 2026-02-05 14:29:01,699 [INFO] Created OT predictor with 7 reference mode distributions
+2026-04-22 21:35:03,311 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:35:03,315 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:35:03,317 [INFO] Initializing Contouring_Objective Objective
+2026-04-22 21:35:03,320 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:35:03,331 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:37:03,981 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:37:03,981 [INFO] NetworkDynamicsModel: rtt_prop=0.050s, rate_max=100.0Mbps, q_max=1000KB
+2026-04-22 21:37:03,982 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:37:03,983 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:37:03,983 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:37:03,984 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:37:03,984 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:37:03,984 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:37:03,985 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:37:03,985 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:37:03,986 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:46:12,568 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:46:12,570 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:46:12,572 [INFO] Initializing Contouring_Objective Objective
+2026-04-22 21:46:12,574 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:46:12,579 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:47:46,467 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:47:46,467 [INFO] NetworkDynamicsModel: rtt_prop=0.050s, rate_max=100.0Mbps, q_max=1000KB
+2026-04-22 21:47:46,467 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:47:46,468 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:47:46,468 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:47:46,468 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:47:46,469 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:47:46,469 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:47:46,469 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:47:46,470 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:47:46,471 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:50:34,071 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:50:34,073 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:50:34,075 [INFO] Initializing Contouring_Objective Objective
+2026-04-22 21:50:34,076 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:50:34,081 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:52:04,593 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:52:04,593 [INFO] NetworkDynamicsModel: rtt_prop=0.050s, rate_max=100.0Mbps, q_max=1000KB
+2026-04-22 21:52:04,593 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:52:04,594 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:52:04,594 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:52:04,594 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:52:04,595 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:52:04,595 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:52:04,595 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:52:04,596 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB
+2026-04-22 21:52:04,597 [INFO] NetworkDynamicsModel: rtt_prop=0.025s, rate_max=50.0Mbps, q_max=500KB

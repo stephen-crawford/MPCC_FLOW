@@ -218,6 +218,16 @@ class LinkEmulator:
             return float("inf")
         return (self._queue_bytes * 8) / rate_bps
 
+    def instantaneous_rate_bps(self, current_time_s: float, window_ms: int = 100) -> float:
+        """Link capacity over a recent window (what an AP scheduler would know)."""
+        end_ms = int(current_time_s * 1000)
+        start_ms = max(0, end_ms - window_ms)
+        if start_ms >= end_ms:
+            return self.trace.avg_rate_bps()
+        opps = self.trace.delivery_opportunities(start_ms, end_ms)
+        duration_s = (end_ms - start_ms) / 1000.0
+        return (opps * MTU * 8) / duration_s if duration_s > 0 else 0.0
+
     @property
     def avg_capacity_mbps(self) -> float:
         return self.trace.avg_rate_mbps()

@@ -318,24 +318,53 @@ class TestABC:
         a = ABC()
         assert a.name == "ABC"
 
-    def test_abc_access_point(self):
-        ap = ABCAccessPoint(queue_capacity_bytes=150_000, eta=0.7)
-        ap.update_link_capacity(0.0, 10e6)  # 10 Mbps
-        ap.update_queue(0)  # empty queue
+    def test_abc_access_point_no_queue(self):
+        # Paper Eq. 1: tr = eta*mu - (mu/delta)*max(x - d_t, 0)
+        # With no queue (x=0): tr = eta*mu = 0.98 * 10 Mbps
+        ap = ABCAccessPoint(eta=0.98, delta_s=0.133, delay_threshold_s=0.005)
+        ap.set_direct_state(capacity_bps=10e6, queue_bytes=0)
         rate = ap.compute_target_rate_bps()
-        # With empty queue: target = capacity * (1 - 0 * eta) = capacity
-        assert rate == pytest.approx(10e6, rel=0.2)
+        assert rate == pytest.approx(0.98 * 10e6, rel=0.01)
 
-    def test_abc_access_point_congested(self):
-        ap = ABCAccessPoint(queue_capacity_bytes=150_000, eta=0.7)
-        ap.update_link_capacity(0.0, 10e6)
-        ap.update_queue(150_000)  # full queue
+    def test_abc_access_point_with_queue(self):
+        # With queuing delay x > d_t, target rate drops
+        ap = ABCAccessPoint(eta=0.98, delta_s=0.133, delay_threshold_s=0.005)
+        # queue_bytes such that queueing_delay = 50ms at 10 Mbps:
+        # q_delay = queue_bytes * 8 / 10e6 = 0.050 => queue_bytes = 62500
+        ap.set_direct_state(capacity_bps=10e6, queue_bytes=62500)
         rate = ap.compute_target_rate_bps()
-        # With full queue: target = capacity * (1 - 1.0 * 0.7) = 0.3 * capacity
-        assert rate == pytest.approx(10e6 * 0.3, rel=0.2)
+        # tr = 0.98*10e6 - (10e6/0.133)*(0.050 - 0.005)
+        #    = 9.8e6 - 75.19e6 * 0.045 = 9.8e6 - 3.38e6 = 6.42e6
+        assert rate == pytest.approx(6.42e6, rel=0.05)
+        assert rate < 0.98 * 10e6  # must be below no-queue target
+
+    def test_abc_accel_fraction_queue_empty(self):
+        # Eq. 2: f = min(tr / (2*cr), 1)
+        # When queue empty, cr = delivery_rate. With low delivery rate, f = 1 (all accel)
+        ap = ABCAccessPoint(eta=0.98)
+        ap.set_direct_state(capacity_bps=10e6, queue_bytes=0, delivery_rate_bps=1e6)
+        f = ap.accel_fraction()
+        # tr = 9.8e6, cr = 1e6 => f = min(9.8e6 / 2e6, 1) = 1.0
+        assert f == pytest.approx(1.0, abs=0.01)
+
+    def test_abc_accel_fraction_queue_full(self):
+        # When queue has data, cr = link_capacity
+        ap = ABCAccessPoint(eta=0.98)
+        ap.set_direct_state(capacity_bps=10e6, queue_bytes=1000)
+        f = ap.accel_fraction()
+        # tr ≈ 9.8e6 (tiny queue delay), cr = 10e6 => f ≈ 0.49
+        assert f == pytest.approx(0.49, abs=0.02)
+
+    def test_abc_mark_token_bucket(self):
+        ap = ABCAccessPoint(eta=0.98)
+        # With queue: cr = capacity, f ≈ 0.49 → ~half accelerate
+        ap.set_direct_state(capacity_bps=10e6, queue_bytes=1000)
+        marks = [ap.mark_packet() for _ in range(100)]
+        accel_frac = sum(marks) / len(marks)
+        assert 0.3 < accel_frac < 0.7
 
     def test_abc_over_constant_link(self, constant_trace_10mbps, short_flow_config):
-        a = ABC(eta=0.7)
+        a = ABC()
         diag = run_single(a, constant_trace_10mbps,
                           LinkConfig(propagation_delay_ms=20),
                           short_flow_config)
@@ -380,21 +409,34 @@ class TestMPCC:
         assert "LYAPUNOV" in proof
 
     def test_mpcc_over_constant_link(self, constant_trace_10mbps, short_flow_config):
-        m = MPCCController(horizon=8, target_delay_ms=50.0)
+        m = MPCCController(horizon=8, target_rtt_s=0.070)
         diag = run_single(m, constant_trace_10mbps,
                           LinkConfig(propagation_delay_ms=20),
                           short_flow_config)
         metrics = diag.compute_metrics()
         assert metrics.avg_throughput_mbps > 0
 
-    def test_mpcc_evaluate_trajectory(self):
+    def test_mpcc_qp_and_slsqp_emulator_paths(self, constant_trace_10mbps, short_flow_config):
+        """Default CasADi QP (paper) and legacy SLSQP both produce traffic."""
+        for solver in ("qp", "slsqp"):
+            m = MPCCController(horizon=4, target_rtt_s=0.070, mpc_solver=solver)
+            diag = run_single(
+                m, constant_trace_10mbps,
+                LinkConfig(propagation_delay_ms=20),
+                short_flow_config,
+            )
+            assert diag.compute_metrics().avg_throughput_mbps > 0, solver
+
+    def test_mpcc_total_cost(self):
         m = MPCCController()
-        cost = m._evaluate_trajectory_multistep(
-            cwnd=15000, q_delay=0.01, bw=1250000, base_rtt=0.02,
-            target_delay=0.05, target_tput=1250000,
-            delta_0=1500, H=4, dt=0.02,
-            w_contour=5.0, w_lag=10.0,
-        )
+        # State: [T_hat=500kB/s, R_hat=50ms, q=5000 bytes]
+        x0 = np.array([500_000.0, 0.050, 5000.0])
+        # Capacity 1.25 MB/s, propagation delay 20ms
+        C = 1_250_000.0
+        R0 = 0.020
+        s_prev = 500_000.0
+        s_seq = np.array([600_000.0, 700_000.0, 800_000.0, 900_000.0])
+        cost = m._total_cost(s_seq, x0, C, R0, s_prev)
         assert isinstance(cost, float)
         assert math.isfinite(cost)
 
@@ -658,7 +700,7 @@ class TestTraceUtilities:
 class TestFullPipeline:
     def test_end_to_end_flow(self, constant_trace_10mbps):
         """Run a complete flow from CCA creation through diagnostics."""
-        cca = MPCCController(horizon=4, target_delay_ms=50.0)
+        cca = MPCCController(horizon=4, target_rtt_s=0.070)
         link = LinkEmulator(constant_trace_10mbps,
                             LinkConfig(propagation_delay_ms=20, queue_size_bytes=75_000))
         flow = Flow(cca, link, FlowConfig(duration_s=3.0, tick_ms=5.0))

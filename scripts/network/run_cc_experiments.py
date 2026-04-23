@@ -231,6 +231,46 @@ def _parse_mm_link_log(
     }
 
 
+def _parse_mm_link_per_port(
+    log_path: Path,
+    *,
+    ports: Iterable[int],
+    duration_s: float,
+) -> dict[int, float]:
+    """Compute per-destination-port delivered throughput (Mbps) from mm-link
+    uplink log.
+
+    The log's departure rows look like:  ``<ts_ms> - <bytes> <src>:<dst> <delay>``
+    We sum bytes per destination port over the run and divide by the run
+    duration. This is the ground-truth measurement when iperf3's control
+    channel times out under high contention and the JSON reports 0 Mbps —
+    the data packets still pass through mm-link and are logged.
+    """
+    ports_set = {int(p) for p in ports}
+    bytes_by_port: dict[int, int] = {p: 0 for p in ports_set}
+    if not log_path.is_file() or duration_s <= 0:
+        return {p: 0.0 for p in ports_set}
+    try:
+        with open(log_path) as f:
+            for line in f:
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.strip().split()
+                if len(parts) < 4 or parts[1] != "-":
+                    continue
+                try:
+                    nbytes = int(parts[2])
+                    src_dst = parts[3]
+                    dst_port = int(src_dst.split(":")[-1])
+                except (ValueError, IndexError):
+                    continue
+                if dst_port in bytes_by_port:
+                    bytes_by_port[dst_port] += nbytes
+    except Exception as e:
+        logger.warning("failed to parse per-port from %s: %s", log_path, e)
+    return {p: (bytes_by_port[p] * 8.0) / (duration_s * 1e6) for p in ports_set}
+
+
 def _parse_iperf3_json(json_path: Path) -> dict:
     """Pull end-to-end throughput + RTT from iperf3 `--json` output."""
     if not json_path.is_file():
@@ -390,13 +430,12 @@ def _nimbus_inner(duration_s: float, out_dir: Path) -> str:
 
 
 def _sprout_inner(duration_s: float, out_dir: Path, sprout_bin: str) -> str:
+    """Client-only inner command. The server is started on the host via the
+    daemon slot so packets actually cross the mm-link bottleneck."""
     log = out_dir / "sprout.log"
-    # Sprout ships as a custom protocol; sproutbt2 takes server/client mode by port.
     return (
-        f"({sprout_bin} 60001 >>{log} 2>&1) & "
-        f"sleep 0.5 && {sprout_bin} $MAHIMAHI_BASE 60001 {int(duration_s)} "
-        f">>{log} 2>&1 || true; "
-        f"pkill -x sproutbt2 2>/dev/null || true"
+        f"{sprout_bin} $MAHIMAHI_BASE 60001 {int(duration_s)} "
+        f">>{log} 2>&1 || true"
     )
 
 
@@ -404,14 +443,15 @@ def _verus_inner(
     duration_s: float, out_dir: Path,
     client_bin: str, server_bin: str,
 ) -> str:
+    """Client-only inner command. Verus's reference binary prints its own
+    per-packet log to the directory specified by ``-n`` — we point it at
+    ``out_dir``. The usage string for verus_client is:
+        ``verus_client <server address> -p <server port> [-d <delay ms>]``
+    """
     log = out_dir / "verus.log"
     return (
-        f"({server_bin} -p 60002 -n {out_dir}/verus_server.log >>{log} 2>&1) & "
-        f"sleep 0.5 && "
-        f"timeout {duration_s + 5:.0f} {client_bin} -t {int(duration_s)} "
-        f"-p 60002 -n {out_dir}/verus_client.log $MAHIMAHI_BASE "
-        f">>{log} 2>&1 || true; "
-        f"pkill -x verus_server 2>/dev/null || true"
+        f"timeout {duration_s + 5:.0f} {client_bin} $MAHIMAHI_BASE "
+        f"-p 60002 >>{log} 2>&1 || true"
     )
 
 
@@ -422,6 +462,7 @@ def _run_under_mahimahi(
     ccp_daemon: list[str] | None = None,
     ccp_daemon_log: Path | None = None,
     ccp_daemon_kill_name: str | None = None,
+    ccp_daemon_needs_sudo: bool = True,
 ) -> ExperimentResult:
     """Run a full experiment.
 
@@ -456,11 +497,16 @@ def _run_under_mahimahi(
     )
 
     # Start the CCP user-space daemon on the host, if this CCA needs one.
+    # (Also used by Sprout/Verus for their server-side reference binaries;
+    # those don't need root, so ccp_daemon_needs_sudo lets callers suppress
+    # the sudo wrapper.)
     daemon_proc: subprocess.Popen | None = None
     if ccp_daemon:
         log_fh = open(ccp_daemon_log, "wb") if ccp_daemon_log else subprocess.DEVNULL
+        argv = (["sudo", "-n", *ccp_daemon] if ccp_daemon_needs_sudo
+                else list(ccp_daemon))
         daemon_proc = subprocess.Popen(
-            ["sudo", "-n", *ccp_daemon],
+            argv,
             stdout=log_fh, stderr=subprocess.STDOUT,
         )
 
@@ -480,13 +526,20 @@ def _run_under_mahimahi(
                 server_proc.kill()
         if daemon_proc and daemon_proc.poll() is None:
             # Daemon was started under sudo, so it runs as root — a plain
-            # kill on the parent sudo leaks the root child. Use sudo pkill.
-            if ccp_daemon_kill_name:
+            # kill on the parent sudo leaks the root child. Use sudo pkill
+            # for root daemons; for user-mode daemons (Sprout/Verus) the
+            # local terminate is sufficient.
+            if ccp_daemon_kill_name and ccp_daemon_needs_sudo:
                 subprocess.run(
                     ["sudo", "-n", "/usr/bin/pkill", "-9", "-x", ccp_daemon_kill_name],
                     capture_output=True,
                 )
-            daemon_proc.wait(timeout=2)
+            else:
+                daemon_proc.terminate()
+            try:
+                daemon_proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                daemon_proc.kill()
         # Belt-and-suspenders: kill any stray iperf3 that escaped.
         subprocess.run(
             ["sudo", "-n", "/usr/bin/pkill", "-9", "-x", "iperf3"],
@@ -600,7 +653,16 @@ def run_sprout(
             duration_s=duration_s, log_dir=out_dir,
         )
     inner = _sprout_inner(duration_s, out_dir, sprout_bin)
-    return _run_under_mahimahi("sprout", pair, delay_ms, duration_s, out_dir, inner)
+    # Sprout server on the host listens on UDP port 60001. Keeping it in the
+    # ccp_daemon slot reuses the _run_under_mahimahi lifecycle (start before
+    # inner, kill after).
+    return _run_under_mahimahi(
+        "sprout", pair, delay_ms, duration_s, out_dir, inner,
+        ccp_daemon=[sprout_bin, "60001"],
+        ccp_daemon_log=out_dir / "sprout_server.log",
+        ccp_daemon_kill_name="sproutbt2",
+        ccp_daemon_needs_sudo=False,
+    )
 
 
 def run_verus(
@@ -615,7 +677,17 @@ def run_verus(
             duration_s=duration_s, log_dir=out_dir,
         )
     inner = _verus_inner(duration_s, out_dir, client, server)
-    return _run_under_mahimahi("verus", pair, delay_ms, duration_s, out_dir, inner)
+    # Verus server: "verus_server -name N -p P -t TIME (sec)".
+    return _run_under_mahimahi(
+        "verus", pair, delay_ms, duration_s, out_dir, inner,
+        ccp_daemon=[
+            server, "-name", "verus", "-p", "60002",
+            "-t", str(int(duration_s + 5)),
+        ],
+        ccp_daemon_log=out_dir / "verus_server.log",
+        ccp_daemon_kill_name="verus_server",
+        ccp_daemon_needs_sudo=False,
+    )
 
 
 CCAS: dict[str, Callable[..., ExperimentResult]] = {
@@ -848,6 +920,13 @@ def run_fairness_matrix(
 
             # Inner (inside the namespace): set sysctl then launch n
             # concurrent iperf3 clients.
+            #
+            # Small inter-flow stagger (0.2 s) reduces control-channel
+            # contention: when all n clients connect simultaneously through
+            # the mm-link bottleneck, the shared TCP control channel is
+            # starved behind data, and each client finishes with "unable to
+            # receive results". Staggering also means --connect-timeout
+            # kicks in sanely.
             setup_parts = [
                 f"(sudo -n sysctl -w net.ipv4.tcp_congestion_control={cca_sysctl} "
                 f">/dev/null 2>&1 || true)",
@@ -855,9 +934,11 @@ def run_fairness_matrix(
             launch_parts = []
             for i in range(n_flows):
                 port = 5201 + i
+                stagger = 0.2 * i
                 launch_parts.append(
-                    f"sh -c 'iperf3 -c $MAHIMAHI_BASE -p {port} -t {duration_s:.1f} "
-                    f"-C {iperf_cca} --json --logfile {run_dir}/iperf3_flow{i}.json "
+                    f"sh -c '(sleep {stagger:.1f}; iperf3 -c $MAHIMAHI_BASE -p {port} "
+                    f"-t {duration_s:.1f} --connect-timeout 10000 "
+                    f"-C {iperf_cca} --json --logfile {run_dir}/iperf3_flow{i}.json) "
                     f">/dev/null 2>&1' &"
                 )
             setup_inner = " && ".join(setup_parts)
@@ -890,10 +971,22 @@ def run_fairness_matrix(
                     capture_output=True,
                 )
 
-            per_flow = []
+            per_flow_iperf = []
             for i in range(n_flows):
                 j = _parse_iperf3_json(run_dir / f"iperf3_flow{i}.json")
-                per_flow.append(j.get("iperf_mbps", 0.0))
+                per_flow_iperf.append(j.get("iperf_mbps", 0.0))
+
+            # If any iperf3 JSON is unusable (e.g. "unable to receive
+            # results:" under control-channel contention), fall back to
+            # mm-link's uplink log which records data packets regardless of
+            # whether iperf3's control channel finished cleanly.
+            ports = [5201 + i for i in range(n_flows)]
+            per_flow = list(per_flow_iperf)
+            if min(per_flow) <= 0.0:
+                mm_tput = _parse_mm_link_per_port(
+                    run_dir / "uplink.log", ports=ports, duration_s=duration_s,
+                )
+                per_flow = [mm_tput[5201 + i] for i in range(n_flows)]
 
             row = {
                 "cca": cca,
@@ -901,6 +994,7 @@ def run_fairness_matrix(
                 "trace": trace_name,
                 "seed": seed,
                 "per_flow_mbps": per_flow,
+                "per_flow_iperf_mbps": per_flow_iperf,
                 "total_mbps": float(sum(per_flow)),
                 "jain": _jains_index(per_flow),
             }

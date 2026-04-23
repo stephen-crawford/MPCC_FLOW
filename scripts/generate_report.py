@@ -51,7 +51,7 @@ logger.setLevel(logging.INFO)
 REPORT_DIR = Path(__file__).resolve().parents[1] / "reports"
 
 FACTORIES = {
-    "MPCC": lambda: MPCCController(horizon=8, target_delay_ms=50.0),
+    "MPCC": lambda: MPCCController(horizon=8, target_rtt_s=0.070),
     "Sprout": lambda: Sprout(),
     "SproutEWMA": lambda: SproutEWMA(),
     "Verus": lambda: Verus(R=4.0),

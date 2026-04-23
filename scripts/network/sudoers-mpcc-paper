@@ -10,10 +10,10 @@
 # Remove:
 #   sudo rm /etc/sudoers.d/mpcc-paper
 
-adigsram ALL=(root) NOPASSWD: /usr/sbin/sysctl, \
+stephen ALL=(root) NOPASSWD: /usr/sbin/sysctl, \
     /usr/bin/pkill, \
     /usr/sbin/insmod, \
     /usr/sbin/rmmod, \
     /usr/bin/chown, \
-    /home/adigsram/Desktop/Research/networking/MPCC_FLOW/third_party/portus-mpcc/target/release/mpcc_cca, \
-    /home/adigsram/Desktop/Research/networking/nimbus-measurement/nimbus/target/release/nimbus
+    /home/stephen/mpcc_flow/third_party/portus-mpcc/target/release/mpcc_cca, \
+    /home/stephen/nimbus/target/release/nimbus

@@ -18,14 +18,24 @@ pub struct MpccConfig {
     pub q_max_bytes: f64,
     pub n_flows: usize,
     pub min_rate_bps: f64,
+    /// Upper bound on the path progress rate v_theta (units: 1/s). Default
+    /// lets the optimizer cover the entire curve in ~1/v_theta_max seconds
+    /// under unbounded cost; the real trajectory will be further limited by
+    /// the network dynamics (tau_T, etc.).
+    pub v_theta_max: f64,
 
-    // Weights (Eq. 7-9)
+    // Weights (paper Sec. IV)
     pub w_contour: f64,
     pub w_lag: f64,
     pub w_delay: f64,
     pub w_power: f64,
     pub w_du: f64,
     pub w_fair: f64,
+    /// Progress reward weight. Multiplies v_theta_k inside the stage cost (as
+    /// a subtracted term) so the controller has a genuine reason to advance
+    /// along the reference curve. Must be > 0 or the controller parks at
+    /// theta=0 (zero throughput).
+    pub w_theta: f64,
 }
 
 impl Default for MpccConfig {
@@ -42,12 +52,14 @@ impl Default for MpccConfig {
             q_max_bytes: 100_000.0,
             n_flows: 1,
             min_rate_bps: 1e5,
+            v_theta_max: 5.0,
             w_contour: 50.0,
             w_lag: 1.0,
             w_delay: 100.0,
             w_power: 0.1,
             w_du: 0.5,
             w_fair: 0.0,
+            w_theta: 10.0,
         }
     }
 }
@@ -78,6 +90,7 @@ impl MpccConfig {
                 ("alpha", &mut cfg.alpha),
                 ("rtt_target", &mut cfg.rtt_target_s),
                 ("q_max", &mut cfg.q_max_bytes),
+                ("v_theta_max", &mut cfg.v_theta_max),
             ] {
                 if let Some(v) = net.get(key).and_then(|x| x.as_f64()) {
                     *dest = v;
@@ -95,6 +108,7 @@ impl MpccConfig {
                 ("power_weight", &mut cfg.w_power),
                 ("acceleration_weight", &mut cfg.w_du),
                 ("fairness_weight", &mut cfg.w_fair),
+                ("theta_progress_weight", &mut cfg.w_theta),
             ] {
                 if let Some(v) = w.get(key).and_then(|x| x.as_f64()) {
                     *dest = v;

@@ -189,8 +189,16 @@ impl<T: Ipc> Flow for MpccFlow<T> {
         };
         self.last_rate_bps = rate_bps;
 
-        // cwnd (bytes) = send_rate (bps) * rtt (s) / 8
-        let cwnd_bytes = ((rate_bps * rtt_s) / 8.0) as u32;
+        // cwnd (bytes) = send_rate (bps) * rtt_prop (s) / 8.
+        //
+        // Critical: use rtt_prop, NOT the current rtt_s. Using rtt_s is a
+        // positive-feedback loop — if the queue fills, RTT inflates, cwnd
+        // scales up, the sender pushes harder, and the queue grows further,
+        // turning MPCC into a loss-based controller despite the solver
+        // having already chosen a rate <= bw. Pinning cwnd to the BDP
+        // (rate * rtt_prop) keeps the queue bounded by the solver's
+        // queue-penalty choice of rate.
+        let cwnd_bytes = ((rate_bps * rtt_prop_s) / 8.0) as u32;
         let cwnd_bytes = cwnd_bytes.max((self.info.mss * 2) as u32);
 
         // One info-level line per solve. Parsed by scripts/network/paper_metrics.py

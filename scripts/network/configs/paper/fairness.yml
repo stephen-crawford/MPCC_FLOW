@@ -11,6 +11,9 @@ network:
   rtt_target: 0.060
   q_max: 400000
   n_flows: 4
+  # Fair-share throughput is C/n = 24 Mbps on a 96 Mbps link; moderate
+  # v_theta_max so individual flows don't race each other past the frontier.
+  v_theta_max: 4.0
 
 # Fairness stress test: 4 MPCC flows share a 96 Mbps bottleneck.
 #   - fairness_weight > 0 biases each sender toward C/n = 24 Mbps (paper Eq. 9).
@@ -23,3 +26,6 @@ weights:
   power_weight: 0.1
   acceleration_weight: 1.0
   fairness_weight: 20.0
+  # Smaller progress reward than wired/LEO so the fairness bias stays dominant
+  # and four flows settle near their 24 Mbps shares.
+  theta_progress_weight: 5.0

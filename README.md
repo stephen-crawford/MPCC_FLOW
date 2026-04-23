@@ -43,6 +43,10 @@ Configuration can also be loaded with `pympc.config.load_config("path/to.yml")` 
 | `third_party/README.md` | Path resolution and build notes |
 | `scripts/network/verify_stack.sh` | Shell smoke test (mm-link e2e + pytest subset) |
 
+## Congestion control (MPCC) and the paper draft
+
+The IEEE-style draft **`paper_state.tex`** describes **MPCC for congestion control** (throughput–delay reference curve, finite-horizon cost, fairness, Mahimahi evaluation narrative). A Python reference controller and trace-driven emulator live in **`congestion_control/`**; **`CONTEXT.md`** tracks how that code lines up with the TeX (solver choice, what is in-tree vs external). Start with `congestion_control/mpcc_cc.py` and `tests/test_congestion_control.py`.
+
 ## Cellular links & congestion-control-style experiments
 
 Experiments use **Mahimahi** (`mm-link` with real **cellular traces** from your checkout—Verizon/TMobile/ATT LTE, etc.) for the bottleneck, and optionally **Nimbus** as a **CCP** congestion-control algorithm (Rust binary built from your Nimbus repo; see [CCP guide](https://ccp-project.github.io/guide)).

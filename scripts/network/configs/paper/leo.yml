@@ -11,6 +11,9 @@ network:
   rtt_target: 0.120
   q_max: 300000
   n_flows: 1
+  # Handovers drop capacity ~10x within hundreds of ms; allow fast progress
+  # back up the curve once the link recovers.
+  v_theta_max: 8.0
 
 # LEO handovers produce abrupt capacity drops (baseline ~50 Mbps -> ~5 Mbps
 # within a few hundred ms) and occasional outages. Compared to cellular:
@@ -26,3 +29,4 @@ weights:
   power_weight: 0.05
   acceleration_weight: 4.0
   fairness_weight: 0.0
+  theta_progress_weight: 15.0

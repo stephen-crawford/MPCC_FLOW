@@ -1,29 +1,29 @@
 """MPCC: Model Predictive Contouring Control for Congestion Control.
 
-Novel congestion control algorithm that formulates rate control as a
-contouring problem in throughput-delay space.  An MPC optimiser plans
-a sequence of window adjustments over a prediction horizon, subject to
-network dynamics constraints and AIMD-compatibility guarantees.
+Implements the MPCC congestion control algorithm as described in the paper
+draft ``paper_state.tex`` (finite-horizon cost, reference curve, constraints).
 
-The "reference path" is the target operating curve in (throughput, delay)
-space -- high throughput with bounded delay.  The MPC minimises contouring
-error (deviation from target delay) and lag error (shortfall in throughput)
-while respecting:
-    - Network dynamics (bandwidth varies, queue drains/fills)
-    - AIMD compatibility (additive increase bounded, multiplicative decrease on loss)
-    - Fairness constraints (converges to fair share)
+State vector (eq. 4):    x = [T_hat, R_hat, q]
+    T_hat : smoothed throughput (bytes/s)
+    R_hat : smoothed RTT (s)
+    q     : queue occupancy (bytes)
 
-This is a lightweight version that uses numpy for the QP solve rather than
-CasADi, to keep per-RTT solve time under 1ms.
+Control input:           u = [s]  (sending rate, bytes/s)
+
+**Default solver** (``mpc_solver="qp"``): CasADi condensed **QP** from
+``planning/network_solver.py`` — same linearized-Gauss–Newton structure as
+``third_party/portus-mpcc`` / the paper's fast path (throughput in **bps**,
+queue in **bits** inside the solver).
+
+**Optional** ``mpc_solver="nlp"`` uses CasADi IPOPT. ``mpc_solver="slsqp"``
+keeps the legacy SciPy SLSQP rollout for debugging / ``_total_cost`` tests.
 """
 
 from __future__ import annotations
 
 import logging
 import math
-from collections import deque
-from enum import Enum, auto
-from typing import Deque, List, Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple, Union
 
 import numpy as np
 
@@ -33,125 +33,507 @@ from congestion_control.network_model import (
     DeliveryRateEstimator,
     RTTEstimator,
 )
+from planning.network_solver import create_solver
+
+if TYPE_CHECKING:
+    from planning.network_solver import NetworkMPCCSolver, NetworkMPCCQPSolver
 
 logger = logging.getLogger("cc.mpcc")
-
-
-class _ProbePhase(Enum):
-    """BBR-inspired probing phases for bandwidth discovery."""
-    CRUISE = auto()     # normal MPC-driven operation
-    PROBE_UP = auto()   # send at 1.25x for 1 RTT to test higher BW
-    DRAIN = auto()      # send at 0.75x for 1 RTT to drain any queue built
 
 
 class MPCCController(CongestionController):
     """Model Predictive Contouring Control for congestion control.
 
-    Improvements over v1:
-        - Max-filter BW estimate for target rate (fast convergence)
-        - Adaptive AI bound: scales with (BDP - cwnd) gap
-        - Multi-step horizon: plans ramp trajectory, not just first step
-        - BBR-style probe/drain cycle for BW discovery
-        - Rebalanced cost: throughput-dominant when queue is empty
-        - Longer slow start with sample count gate
+    Matches the paper formulation:
+      - Reference trajectory Gamma(theta) in (throughput, delay) space  (eq. 6)
+      - Contouring/lag error decomposition via tangent vector           (eqs. 7-8)
+      - Stage cost with Kleinrock's power and hinge delay penalty       (eq. 9)
+      - Rate smoothness penalty on consecutive rate changes             (eq. 10)
+      - Multi-flow fairness penalty                                     (eq. 11)
+      - Hard constraints (eq. 12) via CasADi QP / NLP or legacy SLSQP rollout
+      - Discrete-time dynamics in the solver match ``planning/network_solver``
+        (Euler / linearized model; observed state still EWMA-smoothed)
 
-    State vector (per horizon step):
-        x = [cwnd, rtt_est, throughput_est, queue_delay_est]
-
-    Control input:
-        u = [delta_cwnd]   (window adjustment in bytes)
-
-    Network dynamics (simplified discrete model):
-        cwnd[k+1]       = cwnd[k] + delta_cwnd[k]
-        send_rate[k]    = cwnd[k] / rtt[k]
-        queue_delay[k+1]= max(0, queue_delay[k] + (send_rate[k] - bw_est) * dt / queue_cap)
-        rtt[k+1]        = base_rtt + queue_delay[k+1]
-        throughput[k+1]  = min(send_rate[k], bw_est)
-
-    Cost function (adaptive weights):
-        J = sum_k { w_contour(q) * (queue_delay[k] - target_delay)^2
-                   + w_lag(q) * (throughput[k] - target_tput)^2
-                   + w_smooth * delta_cwnd[k]^2
-                   + w_progress * (-throughput[k]) }
-
-    Constraints:
-        cwnd[k] >= MTU
-        cwnd[k] <= bw_est * rtt[k] * headroom_factor
-        delta_cwnd[k] <= ai_max (adaptive)
-        delta_cwnd[k] >= -md_factor * cwnd[k]
+    State vector:  x = [T_hat, R_hat, q]   (smoothed throughput, smoothed RTT, queue occupancy)
+    Control input: u = [s]                  (sending rate in bytes/s)
     """
 
     def __init__(
         self,
+        # MPC horizon
         horizon: int = 8,
         dt_s: float = 0.020,
-        target_delay_ms: float = 50.0,
-        # Cost weights (base values, adapted at runtime)
-        w_contour: float = 5.0,
-        w_lag: float = 10.0,
-        w_smooth: float = 0.1,
-        w_progress: float = 3.0,
-        # AIMD bounds
+        # Dynamics (eq. 5)
+        tau_T: float = 0.5,
+        tau_R: float = 0.5,
+        # Reference path (eq. 6)
+        alpha: float = 0.050,
+        # Cost weights (eq. 9)
+        w_c: float = 5.0,
+        w_l: float = 10.0,
+        w_d: float = 2.0,
+        w_p: float = 1.0,
+        # Smoothness (eq. 10)
+        w_u: float = 0.1,
+        # Fairness (eq. 11)
+        w_f: float = 1.0,
+        n_flows: int = 1,
+        # Constraints (eq. 12)
+        q_max_bytes: int = 150_000,
+        rate_headroom: float = 2.0,
+        target_rtt_s: float = 0.100,
+        # AIMD loss response
         md_factor: float = 0.5,
-        # Probing
-        probe_interval_rtts: int = 8,
-        probe_gain: float = 1.25,
-        drain_gain: float = 0.75,
         # Slow start
         min_ss_samples: int = 20,
         ss_bdp_exit_factor: float = 3.0,
-        # Headroom
-        cwnd_headroom: float = 2.5,
+        mpc_solver: str = "qp",
         **kwargs,
     ):
         super().__init__(name="MPCC", **kwargs)
 
+        mode = mpc_solver.lower().strip()
+        if mode not in ("qp", "nlp", "slsqp"):
+            raise ValueError(
+                f"mpc_solver must be 'qp', 'nlp', or 'slsqp', got {mpc_solver!r}"
+            )
+        self._mpc_solver = mode
+
         # MPC parameters
-        self._horizon = horizon
+        self._N = horizon
         self._dt = dt_s
-        self._target_delay_s = target_delay_ms / 1000.0
-        self._w_contour_base = w_contour
-        self._w_lag_base = w_lag
-        self._w_smooth = w_smooth
-        self._w_progress = w_progress
+
+        # Dynamics (eq. 5)
+        self._tau_T = tau_T
+        self._tau_R = tau_R
+
+        # Reference path (eq. 6)
+        self._alpha_ref = alpha
+
+        # Cost weights (eq. 9)
+        self._w_c = w_c
+        self._w_l = w_l
+        self._w_d = w_d
+        self._w_p = w_p
+
+        # Smoothness (eq. 10)
+        self._w_u = w_u
+
+        # Fairness (eq. 11)
+        self._w_f = w_f
+        self._n_flows = n_flows
+
+        # Constraints (eq. 12)
+        self._q_max = float(q_max_bytes)
+        self._rate_headroom = rate_headroom
+        self._R_star = target_rtt_s
+
+        # AIMD
         self._md_factor = md_factor
-        self._cwnd_headroom = cwnd_headroom
 
-        # Probing parameters
-        self._probe_interval_rtts = probe_interval_rtts
-        self._probe_gain = probe_gain
-        self._drain_gain = drain_gain
-        self._probe_phase = _ProbePhase.CRUISE
-        self._probe_rtts_remaining = 0
-        self._rtts_since_probe = 0
-        self._pre_probe_cwnd: float = 0.0
-
-        # Slow start parameters
+        # Slow start
         self._min_ss_samples = min_ss_samples
         self._ss_bdp_exit = ss_bdp_exit_factor
         self._ss_ack_count = 0
 
-        # State estimators
+        # Internal MPC state: x = [T_hat, R_hat, q]
+        self._T_hat = 0.0       # smoothed throughput (bytes/s)
+        self._R_hat = 0.0       # smoothed RTT (s)
+        self._q = 0.0           # queue occupancy (bytes)
+
+        # Estimated network parameters
+        self._C = 0.0           # link capacity (bytes/s)
+        self._R0 = 0.0          # propagation delay (s)
+
+        # MPC solution state
+        self._s_opt = 0.0       # optimal sending rate from last solve
+        self._prev_s_seq: Optional[np.ndarray] = None
+
+        # Estimators
         self._rtt_est = RTTEstimator(window_s=10.0)
         self._bw_est = BandwidthEstimator(window_s=3.0)
         self._delivery_rate = DeliveryRateEstimator(window_s=0.5)
 
-        # Current estimates
-        self._base_rtt_s: float = 0.0
-        self._estimated_bw_bytes_per_s: float = 0.0
-        self._estimated_queue_delay_s: float = 0.0
-        self._bdp_bytes: float = 0.0
-
-        # MPC timing
-        self._loss_in_last_rtt = False
-        self._last_solve_time_s: float = 0.0
+        # Timing
+        self._last_solve_time_s = 0.0
+        self._last_update_time_s = 0.0
         self._solve_interval_s = dt_s
 
         self._state = CCAState.SLOW_START
 
-        logger.debug("MPCCv2 initialized: H=%d, dt=%.0fms, target_delay=%.0fms, "
-                      "probe_every=%d RTTs",
-                      horizon, dt_s * 1000, target_delay_ms, probe_interval_rtts)
+        # CasADi backend (``qp`` / ``nlp``); rebuilt on ``reset`` / horizon change
+        self._net_solver: Union["NetworkMPCCQPSolver", "NetworkMPCCSolver", None] = None
+
+        logger.debug(
+            "MPCC initialized: solver=%s, N=%d, dt=%.0fms, tau_T=%.2f, tau_R=%.2f, "
+            "alpha=%.3f, R*=%.0fms",
+            self._mpc_solver, horizon, dt_s * 1000, tau_T, tau_R, alpha, target_rtt_s * 1000,
+        )
+
+    # ------------------------------------------------------------------
+    # Network dynamics (eq. 5)
+    # ------------------------------------------------------------------
+
+    def _dynamics_f(self, x: np.ndarray, s: float,
+                    C: float, R0: float) -> np.ndarray:
+        """Continuous-time dynamics f(x, s) from eq. 5.
+
+            dT_hat/dt = (min(s, C) - T_hat) / tau_T
+            dR_hat/dt = (R0 + q/C - R_hat)  / tau_R
+            dq/dt     = s - C
+        """
+        T_hat, R_hat, q = x
+        C_s = max(C, 1.0)
+        dT = (min(s, C_s) - T_hat) / self._tau_T
+        dR = (R0 + q / C_s - R_hat) / self._tau_R
+        dq = s - C_s
+        return np.array([dT, dR, dq])
+
+    def _rk4_step(self, x: np.ndarray, s: float,
+                  C: float, R0: float, dt: float) -> np.ndarray:
+        """RK4 integration of eq. 5 over one timestep dt."""
+        k1 = self._dynamics_f(x, s, C, R0)
+        k2 = self._dynamics_f(x + 0.5 * dt * k1, s, C, R0)
+        k3 = self._dynamics_f(x + 0.5 * dt * k2, s, C, R0)
+        k4 = self._dynamics_f(x + dt * k3, s, C, R0)
+        x_next = x + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+        x_next[0] = max(x_next[0], 0.0)   # T_hat >= 0
+        x_next[2] = max(x_next[2], 0.0)   # q >= 0
+        return x_next
+
+    # ------------------------------------------------------------------
+    # Jacobians for QP linearization (eq. 15)
+    # ------------------------------------------------------------------
+
+    def _dynamics_jacobians(self, s: float,
+                            C: float) -> Tuple[np.ndarray, np.ndarray]:
+        """Jacobians df/dx and df/ds of continuous-time dynamics (eq. 15).
+
+        For QP approximation (eq. 13):
+            A_k = I + dt * df/dx|_{x_bar, s_bar}
+            B_k = dt * df/ds|_{x_bar, s_bar}
+
+        Returns (df/dx, df/ds).
+        """
+        C_s = max(C, 1.0)
+        dfdx = np.array([
+            [-1.0 / self._tau_T, 0.0,                0.0],
+            [0.0,                -1.0 / self._tau_R,  1.0 / (C_s * self._tau_R)],
+            [0.0,                0.0,                 0.0],
+        ])
+        dfds = np.array([
+            1.0 / self._tau_T if s < C_s else 0.0,
+            0.0,
+            1.0,
+        ])
+        return dfdx, dfds
+
+    def _linearize(self, x_bar: np.ndarray, s_bar: float,
+                   C: float, R0: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Linearize dynamics at (x_bar, s_bar) per eq. 13.
+
+        Returns (A_k, B_k, c_k) such that:
+            x_{k+1} ~ A_k x_k + B_k s_k + c_k
+        """
+        dfdx, dfds = self._dynamics_jacobians(s_bar, C)
+        A = np.eye(3) + self._dt * dfdx
+        B = self._dt * dfds
+        x_bar_next = self._rk4_step(x_bar, s_bar, C, R0, self._dt)
+        c = x_bar_next - A @ x_bar - B * s_bar
+        return A, B, c
+
+    # ------------------------------------------------------------------
+    # Reference trajectory (eq. 6)
+    # ------------------------------------------------------------------
+
+    def _reference_path(self, theta: float,
+                        C: float, R0: float) -> Tuple[float, float]:
+        """Reference trajectory Gamma(theta) = (C*theta, R0 + alpha*theta^2)."""
+        theta = float(np.clip(theta, 0.0, 1.0))
+        Gamma_T = C * theta
+        Gamma_R = R0 + self._alpha_ref * theta ** 2
+        return Gamma_T, Gamma_R
+
+    def _tangent(self, theta: float, C: float) -> Tuple[float, float]:
+        """Unit tangent t(theta) = (C, 2*alpha*theta) / ||(C, 2*alpha*theta)||."""
+        theta = float(np.clip(theta, 0.0, 1.0))
+        raw_T = C
+        raw_R = 2.0 * self._alpha_ref * theta
+        norm = math.sqrt(raw_T ** 2 + raw_R ** 2)
+        if norm < 1e-12:
+            return 1.0, 0.0
+        return raw_T / norm, raw_R / norm
+
+    # ------------------------------------------------------------------
+    # Contouring and lag errors (eqs. 7-8)
+    # ------------------------------------------------------------------
+
+    def _contouring_lag_errors(self, T_hat: float, R_hat: float,
+                               C: float, R0: float) -> Tuple[float, float]:
+        """Contouring error e_c (eq. 7) and lag error e_l (eq. 8).
+
+        theta_k = T_hat_k / C  (implicit path parameter)
+        e_c = t_R * (T_hat - Gamma_T) - t_T * (R_hat - Gamma_R)
+        e_l = t_T * (T_hat - Gamma_T) + t_R * (R_hat - Gamma_R)
+        """
+        C_s = max(C, 1.0)
+        theta = float(np.clip(T_hat / C_s, 0.0, 1.0))
+        Gamma_T, Gamma_R = self._reference_path(theta, C_s, R0)
+        t_T, t_R = self._tangent(theta, C_s)
+        dT = T_hat - Gamma_T
+        dR = R_hat - Gamma_R
+        e_c = t_R * dT - t_T * dR
+        e_l = t_T * dT + t_R * dR
+        return e_c, e_l
+
+    # ------------------------------------------------------------------
+    # Cost function (eqs. 9-11)
+    # ------------------------------------------------------------------
+
+    def _stage_cost(self, x: np.ndarray, C: float, R0: float) -> float:
+        """Stage cost l(k) from eq. 9.
+
+        l(k) = w_c * e_c^2 + w_l * e_l^2
+             + w_d * [R_hat - R*]_+^2
+             - w_p * (T_hat/C) / (R_hat/R0)
+        """
+        T_hat, R_hat, q = x
+        C_s = max(C, 1.0)
+        R0_s = max(R0, 1e-6)
+
+        e_c, e_l = self._contouring_lag_errors(T_hat, R_hat, C_s, R0_s)
+
+        # Hinge delay penalty [R_hat - R*]_+^2
+        delay_excess = max(R_hat - self._R_star, 0.0)
+
+        # Kleinrock's power: (T_hat/C) / (R_hat/R0)
+        R_hat_s = max(R_hat, 1e-6)
+        power = (T_hat / C_s) / (R_hat_s / R0_s)
+
+        return (self._w_c * e_c ** 2
+                + self._w_l * e_l ** 2
+                + self._w_d * delay_excess ** 2
+                - self._w_p * power)
+
+    def _total_cost(self, s_seq: np.ndarray, x0: np.ndarray,
+                    C: float, R0: float, s_prev: float) -> float:
+        """Full cost J (eq. 10) + fairness (eq. 11).
+
+        J = sum_{k=0}^{N} l(k)
+          + sum_{k=1}^{N} w_u * (s_k - s_{k-1})^2 / s_max^2
+          + sum_{k=0}^{N-1} w_f * (s_k - C/n)^2
+        """
+        N = len(s_seq)
+        s_max = max(self._rate_headroom * C, 1.0)
+        fair_share = C / max(self._n_flows, 1) if self._n_flows > 1 else 0.0
+
+        cost = 0.0
+        x = x0.copy()
+
+        # l(0): stage cost at initial state
+        cost += self._stage_cost(x, C, R0)
+
+        for k in range(N):
+            # Rate smoothness (eq. 10): w_u * (s_k - s_{k-1})^2 / s_max^2
+            s_km1 = s_prev if k == 0 else s_seq[k - 1]
+            cost += self._w_u * ((s_seq[k] - s_km1) / s_max) ** 2
+
+            # Fairness penalty (eq. 11): w_f * (s_k - C/n)^2
+            if self._n_flows > 1:
+                cost += self._w_f * (s_seq[k] - fair_share) ** 2
+
+            # Propagate state via RK4 (eq. 5)
+            x = self._rk4_step(x, s_seq[k], C, R0, self._dt)
+
+            # l(k+1): stage cost at propagated state
+            cost += self._stage_cost(x, C, R0)
+
+        return cost
+
+    # ------------------------------------------------------------------
+    # NLP constraints (eq. 12)
+    # ------------------------------------------------------------------
+
+    def _build_constraints(self, x0: np.ndarray, C: float, R0: float):
+        """Build inequality constraints for the NLP (eq. 12c-e).
+
+        For each horizon step k = 1, ..., N:
+            0 <= q_k <= q_max     (eq. 12d)
+            R_hat_k <= 4 * R*     (eq. 12e)
+
+        Rate bounds 0 <= s_k <= s_max are handled via variable bounds.
+        SLSQP convention: ineq constraints must satisfy f(x) >= 0.
+        """
+        def ineq_fn(s_seq):
+            x = x0.copy()
+            vals = []
+            for k in range(len(s_seq)):
+                x = self._rk4_step(x, s_seq[k], C, R0, self._dt)
+                vals.append(x[2])                           # q_k >= 0
+                vals.append(self._q_max - x[2])             # q_k <= q_max
+                vals.append(4.0 * self._R_star - x[1])      # R_hat_k <= 4*R*
+            return np.array(vals)
+
+        return {"type": "ineq", "fun": ineq_fn}
+
+    # ------------------------------------------------------------------
+    # CasADi QP / NLP backend (``planning/network_solver``)
+    # ------------------------------------------------------------------
+
+    def _net_solver_config_template(self) -> dict:
+        """YAML-shaped config for ``NetworkMPCCQPSolver`` / ``NetworkMPCCSolver``."""
+        return {
+            "planner": {"horizon": self._N, "timestep": self._dt},
+            "network": {
+                "rtt_prop": max(self._R0, 1e-6),
+                "tau_rtt": self._tau_R,
+                "tau_tput": self._tau_T,
+                "rate_max": max(self._rate_headroom * max(self._C, 1.0) * 8.0, 1e6),
+                "alpha": self._alpha_ref,
+                "rtt_target": self._R_star,
+                "q_max": int(self._q_max),
+                "n_flows": self._n_flows,
+                "delay_hinge_absolute": True,
+                "fairness_unnormalized": True,
+            },
+            "weights": {
+                "contour_weight": self._w_c,
+                "contouring_lag_weight": self._w_l,
+                "delay_weight": self._w_d,
+                "power_weight": self._w_p,
+                "acceleration_weight": self._w_u,
+                "fairness_weight": self._w_f if self._n_flows > 1 else 0.0,
+            },
+        }
+
+    def _sync_net_solver_params(self) -> None:
+        """Refresh time-varying knobs (capacity, RTT prop, weights) before each solve."""
+        if self._net_solver is None:
+            return
+        s = self._net_solver
+        C_bps = max(self._C, 1.0) * 8.0
+        s.rate_max = self._rate_headroom * C_bps
+        s.rtt_prop = max(self._R0, 1e-6)
+        s.rtt_target = self._R_star
+        s.q_max = int(self._q_max)
+        s.n_flows = self._n_flows
+        s.alpha = self._alpha_ref
+        s.tau_tput = self._tau_T
+        s.tau_rtt = self._tau_R
+        s.w_contour = self._w_c
+        s.w_lag = self._w_l
+        s.w_delay = self._w_d
+        s.w_power = self._w_p
+        s.w_du = self._w_u
+        s.w_fair = self._w_f if self._n_flows > 1 else 0.0
+        s.delay_hinge_absolute = True
+        s.fairness_unnormalized = True
+
+    def _ensure_net_solver(self) -> None:
+        if self._mpc_solver == "slsqp":
+            return
+        if self._net_solver is None:
+            self._net_solver = create_solver(
+                self._net_solver_config_template(),
+                self._mpc_solver,
+            )
+        self._sync_net_solver_params()
+
+    # ------------------------------------------------------------------
+    # MPC solver (eq. 12)
+    # ------------------------------------------------------------------
+
+    def _solve_mpc(self, timestamp_s: float) -> None:
+        """Receding-horizon MPC: default CasADi QP (paper), optional NLP or SLSQP."""
+        if self._mpc_solver == "slsqp":
+            self._solve_mpc_slsqp(timestamp_s)
+            return
+
+        self._ensure_net_solver()
+        assert self._net_solver is not None
+
+        C = max(self._C, 1.0)
+        s_max = self._rate_headroom * C
+        bw_bps = C * 8.0
+        u_prev_bps = (self._s_opt * 8.0) if self._s_opt > 0 else (bw_bps * 0.5)
+
+        res = self._net_solver.solve(
+            self._T_hat * 8.0,
+            self._R_hat,
+            self._q * 8.0,
+            bw_bps,
+            u_prev_bps=u_prev_bps,
+        )
+
+        self._s_opt = float(np.clip(res.send_rate / 8.0, 0.0, s_max))
+        if res.control_sequence is not None:
+            self._prev_s_seq = np.asarray(res.control_sequence, dtype=float) / 8.0
+        else:
+            self._prev_s_seq = None
+
+        if not res.success:
+            logger.debug("CasADi MPCC solve reported failure; using returned rate")
+
+        rtt = max(self._R_hat, self._R0, 0.001)
+        old_cwnd = self._cwnd
+        self._cwnd = max(self._s_opt * rtt, float(self.mtu))
+        self._state = CCAState.STEADY
+
+        self._notify_cwnd_change(
+            old_cwnd, self._cwnd, timestamp_s, f"mpc_s={self._s_opt:.0f}"
+        )
+
+    def _solve_mpc_slsqp(self, timestamp_s: float) -> None:
+        """Legacy SciPy SLSQP on an RK4-rolled nonlinear cost (debug / unit tests)."""
+        from scipy.optimize import minimize
+
+        C = max(self._C, 1.0)
+        R0 = max(self._R0, 1e-4)
+        N = self._N
+        s_max = self._rate_headroom * C
+
+        x0 = np.array([self._T_hat, self._R_hat, self._q])
+
+        if self._prev_s_seq is not None and len(self._prev_s_seq) == N:
+            s_init = np.roll(self._prev_s_seq, -1)
+            s_init[-1] = s_init[-2]
+        else:
+            s_init = np.full(N, self._s_opt if self._s_opt > 0 else C * 0.5)
+        s_init = np.clip(s_init, 0.0, s_max)
+
+        s_prev = self._s_opt if self._s_opt > 0 else float(s_init[0])
+
+        bounds = [(0.0, s_max)] * N
+        constraints = self._build_constraints(x0, C, R0)
+
+        result = minimize(
+            self._total_cost, s_init,
+            args=(x0, C, R0, s_prev),
+            method="SLSQP",
+            bounds=bounds,
+            constraints=constraints,
+            options={"maxiter": 50, "ftol": 1e-6},
+        )
+
+        if result.success or result.fun < self._total_cost(
+            s_init, x0, C, R0, s_prev
+        ):
+            s_opt_seq = result.x
+        else:
+            s_opt_seq = s_init
+            logger.debug("MPCC SLSQP did not converge, using warm-start")
+
+        self._s_opt = float(np.clip(s_opt_seq[0], 0.0, s_max))
+        self._prev_s_seq = s_opt_seq
+
+        rtt = max(self._R_hat, self._R0, 0.001)
+        old_cwnd = self._cwnd
+        self._cwnd = max(self._s_opt * rtt, float(self.mtu))
+        self._state = CCAState.STEADY
+
+        self._notify_cwnd_change(
+            old_cwnd, self._cwnd, timestamp_s, f"mpc_s={self._s_opt:.0f}"
+        )
 
     # ------------------------------------------------------------------
     # Core event handlers
@@ -167,39 +549,50 @@ class MPCCController(CongestionController):
         rate_bps = self._delivery_rate.on_ack(ack.timestamp_s, ack.delivered_bytes)
         self._bw_est.add_sample(ack.timestamp_s, rate_bps)
 
-        self._base_rtt_s = self._rtt_est.min_rtt_s
-        self._estimated_queue_delay_s = self._rtt_est.queue_delay_s()
+        # Network parameter estimates
+        self._R0 = self._rtt_est.min_rtt_s
+        self._C = self._bw_est.max_bw_bps / 8  # bytes/s
 
-        # Use max-filter for BW when queue is low; EWMA when queue is high
-        # This is the key fix: max-filter converges much faster
-        if self._estimated_queue_delay_s < self._target_delay_s * 0.5:
-            self._estimated_bw_bytes_per_s = self._bw_est.max_bw_bps / 8
+        # Update internal MPC state [T_hat, R_hat, q] via exponential smoothing
+        # that matches the continuous dynamics (eq. 5) with time constant tau
+        dt_actual = (
+            ack.timestamp_s - self._last_update_time_s
+            if self._last_update_time_s > 0
+            else self._dt
+        )
+        dt_actual = max(dt_actual, 1e-6)
+        self._last_update_time_s = ack.timestamp_s
+
+        alpha_T = 1.0 - math.exp(-dt_actual / self._tau_T)
+        alpha_R = 1.0 - math.exp(-dt_actual / self._tau_R)
+
+        measured_tput = rate_bps / 8  # bytes/s
+        if self._T_hat == 0.0:
+            self._T_hat = measured_tput
         else:
-            # When queue is building, trust the moderate estimate to avoid
-            # overestimating capacity due to burst deliveries from a full queue
-            self._estimated_bw_bytes_per_s = self._bw_est.smooth_bw_bps / 8
+            self._T_hat += alpha_T * (measured_tput - self._T_hat)
 
-        # Compute BDP
-        rtt_for_bdp = max(self._rtt_est.srtt_s, self._base_rtt_s, 0.001)
-        self._bdp_bytes = self._estimated_bw_bytes_per_s * rtt_for_bdp
+        if self._R_hat == 0.0:
+            self._R_hat = ack.rtt_s
+        else:
+            self._R_hat += alpha_R * (ack.rtt_s - self._R_hat)
+
+        # q estimated from queuing delay: q = (RTT - R0) * C
+        C_s = max(self._C, 1.0)
+        self._q = max(ack.rtt_s - self._R0, 0.0) * C_s
 
         # --- Slow start ---
         if self._state == CCAState.SLOW_START:
             self._do_slow_start(ack)
             return
 
-        # --- Probing state machine ---
-        self._advance_probe(ack.timestamp_s)
-
-        # --- MPC solve ---
+        # --- MPC solve at regular intervals ---
         if ack.timestamp_s - self._last_solve_time_s >= self._solve_interval_s:
             self._solve_mpc(ack.timestamp_s)
             self._last_solve_time_s = ack.timestamp_s
 
-        self._loss_in_last_rtt = False
-
     def on_loss(self, loss: LossInfo) -> None:
-        """AIMD multiplicative decrease on loss -- provably fair."""
+        """AIMD multiplicative decrease on loss."""
         self._bytes_lost += loss.bytes_lost
         old_cwnd = self._cwnd
 
@@ -207,10 +600,10 @@ class MPCCController(CongestionController):
         self._cwnd = max(self._cwnd, float(self.mtu))
         self._ssthresh = self._cwnd
         self._state = CCAState.RECOVERY
-        self._loss_in_last_rtt = True
-        # Cancel any probe in progress
-        self._probe_phase = _ProbePhase.CRUISE
-        self._probe_rtts_remaining = 0
+
+        # Update optimal rate to match reduced cwnd
+        rtt = max(self._R_hat, self._R0, 0.001)
+        self._s_opt = self._cwnd / rtt
 
         self._notify_cwnd_change(old_cwnd, self._cwnd, loss.timestamp_s, "loss_md")
 
@@ -220,207 +613,44 @@ class MPCCController(CongestionController):
         self._ssthresh = old_cwnd / 2
         self._state = CCAState.SLOW_START
         self._ss_ack_count = 0
-        self._probe_phase = _ProbePhase.CRUISE
+        self._s_opt = 0.0
+        self._prev_s_seq = None
 
     def get_cwnd(self) -> int:
         return max(int(self._cwnd), self.mtu)
 
     def get_pacing_rate(self) -> Optional[float]:
-        if self._rtt_est.srtt_s > 0:
-            base_rate = self._cwnd / self._rtt_est.srtt_s
-            if self._probe_phase == _ProbePhase.PROBE_UP:
-                return base_rate * self._probe_gain
-            elif self._probe_phase == _ProbePhase.DRAIN:
-                return base_rate * self._drain_gain
-            return base_rate
-        return None
+        """Return optimal sending rate s* from MPC solution (bytes/s)."""
+        return self._s_opt if self._s_opt > 0 else None
 
     # ------------------------------------------------------------------
-    # Slow start: aggressive growth with delayed BDP exit
+    # Slow start
     # ------------------------------------------------------------------
 
     def _do_slow_start(self, ack: AckInfo) -> None:
         old_cwnd = self._cwnd
         self._ss_ack_count += 1
+        self._cwnd += ack.bytes_acked  # exponential growth
 
-        # Exponential growth: double every RTT
-        self._cwnd += ack.bytes_acked
-
-        # Only consider exiting once we have enough samples for a reliable BDP
-        if self._ss_ack_count >= self._min_ss_samples and self._bdp_bytes > 0:
-            if self._cwnd > self._ss_bdp_exit * self._bdp_bytes:
+        bdp = self._C * max(self._rtt_est.srtt_s, self._R0, 0.001)
+        if self._ss_ack_count >= self._min_ss_samples and bdp > 0:
+            if self._cwnd > self._ss_bdp_exit * bdp:
                 self._state = CCAState.STEADY
-                # Set cwnd to 1x BDP (will ramp up via MPC)
-                self._cwnd = max(self._bdp_bytes, float(self.mtu))
+                self._cwnd = max(bdp, float(self.mtu))
+                rtt = max(self._R_hat, self._R0, 0.001)
+                self._s_opt = self._cwnd / rtt
                 self._last_solve_time_s = ack.timestamp_s
-                logger.debug("MPCC: exit slow start at cwnd=%.0f BDP=%.0f after %d ACKs",
-                             self._cwnd, self._bdp_bytes, self._ss_ack_count)
 
         self._notify_cwnd_change(old_cwnd, self._cwnd, ack.timestamp_s, "slow_start")
 
     # ------------------------------------------------------------------
-    # BBR-style probe/drain cycle
+    # Fairness
     # ------------------------------------------------------------------
 
-    def _advance_probe(self, timestamp_s: float) -> None:
-        """State machine for periodic bandwidth probing."""
-        if self._loss_in_last_rtt:
-            return
-
-        rtt = max(self._rtt_est.srtt_s, 0.01)
-
-        if self._probe_phase == _ProbePhase.CRUISE:
-            self._rtts_since_probe += 1
-            if self._rtts_since_probe >= self._probe_interval_rtts:
-                # Start probe-up phase
-                self._probe_phase = _ProbePhase.PROBE_UP
-                self._probe_rtts_remaining = 1
-                self._pre_probe_cwnd = self._cwnd
-                self._rtts_since_probe = 0
-                # Temporarily increase cwnd for probing
-                old = self._cwnd
-                self._cwnd *= self._probe_gain
-                self._notify_cwnd_change(old, self._cwnd, timestamp_s, "probe_up")
-
-        elif self._probe_phase == _ProbePhase.PROBE_UP:
-            self._probe_rtts_remaining -= 1
-            if self._probe_rtts_remaining <= 0:
-                # Transition to drain
-                self._probe_phase = _ProbePhase.DRAIN
-                self._probe_rtts_remaining = 1
-                old = self._cwnd
-                self._cwnd = self._pre_probe_cwnd * self._drain_gain
-                self._cwnd = max(self._cwnd, float(self.mtu))
-                self._notify_cwnd_change(old, self._cwnd, timestamp_s, "drain")
-
-        elif self._probe_phase == _ProbePhase.DRAIN:
-            self._probe_rtts_remaining -= 1
-            if self._probe_rtts_remaining <= 0:
-                # Back to cruise, restore cwnd
-                self._probe_phase = _ProbePhase.CRUISE
-                old = self._cwnd
-                self._cwnd = self._pre_probe_cwnd
-                self._notify_cwnd_change(old, self._cwnd, timestamp_s, "cruise_resume")
-
-    # ------------------------------------------------------------------
-    # MPC solver
-    # ------------------------------------------------------------------
-
-    def _adaptive_ai_max(self) -> float:
-        """Scale additive increase bound with the gap between cwnd and BDP.
-
-        When cwnd << BDP: allow large jumps (up to 25% of gap per solve)
-        When cwnd ~= BDP: cap at 1 MSS for fine-grained control
-        """
-        if self._bdp_bytes <= 0:
-            return float(self.mtu)
-        gap = max(self._bdp_bytes - self._cwnd, 0)
-        # 25% of gap, but at least 1 MSS and at most 50% of BDP
-        ai = max(gap * 0.25, float(self.mtu))
-        ai = min(ai, self._bdp_bytes * 0.5)
-        return ai
-
-    def _adaptive_weights(self) -> Tuple[float, float]:
-        """Adapt contour/lag weights based on queue state.
-
-        When queue is empty: prioritize throughput (high w_lag, low w_contour)
-        When queue is building: prioritize delay control (high w_contour)
-        """
-        q_ratio = self._estimated_queue_delay_s / max(self._target_delay_s, 0.001)
-        # Sigmoid-like blend: at q_ratio=0 -> throughput mode; at q_ratio=1 -> delay mode
-        blend = min(q_ratio, 1.0)  # 0..1
-        w_contour = self._w_contour_base * (0.2 + 0.8 * blend)
-        w_lag = self._w_lag_base * (1.0 - 0.5 * blend)
-        return w_contour, w_lag
-
-    def _solve_mpc(self, timestamp_s: float) -> None:
-        """Solve the MPC problem with multi-step horizon optimization."""
-        if self._probe_phase != _ProbePhase.CRUISE:
-            return  # don't interfere with probe/drain
-
-        H = self._horizon
-        dt = self._dt
-        cwnd = self._cwnd
-        bw = max(self._estimated_bw_bytes_per_s, 1.0)
-        base_rtt = max(self._base_rtt_s, 0.001)
-        q_delay = self._estimated_queue_delay_s
-        target_delay = self._target_delay_s
-        target_tput = bw
-        ai_max = self._adaptive_ai_max()
-        w_contour, w_lag = self._adaptive_weights()
-
-        # Multi-step search: try different ramp profiles for the full horizon
-        # Profile = (delta_0_fraction, decay_factor)
-        # delta[k] = delta_0 * decay^k
-        best_cost = float("inf")
-        best_delta_0 = 0.0
-
-        # Candidate delta_0 values, from decrease to aggressive increase
-        n_candidates = 25
-        max_decrease = -self._md_factor * cwnd * 0.3  # don't go full MD, MPC is incremental
-        candidates = np.linspace(max_decrease, ai_max, n_candidates)
-
-        for delta_0 in candidates:
-            cost = self._evaluate_trajectory_multistep(
-                cwnd, q_delay, bw, base_rtt, target_delay, target_tput,
-                delta_0, H, dt, w_contour, w_lag,
-            )
-            if cost < best_cost:
-                best_cost = cost
-                best_delta = delta_0
-
-        # Apply best first-step control
-        old_cwnd = self._cwnd
-        new_cwnd = cwnd + best_delta
-
-        # Enforce bounds
-        new_cwnd = max(new_cwnd, float(self.mtu))
-        max_cwnd = bw * (base_rtt + target_delay) * self._cwnd_headroom
-        new_cwnd = min(new_cwnd, max_cwnd)
-
-        self._cwnd = new_cwnd
-        self._state = CCAState.STEADY
-        self._notify_cwnd_change(old_cwnd, self._cwnd, timestamp_s,
-                                 f"mpc_d={best_delta:.0f}_ai={ai_max:.0f}")
-
-    def _evaluate_trajectory_multistep(
-        self, cwnd: float, q_delay: float, bw: float,
-        base_rtt: float, target_delay: float, target_tput: float,
-        delta_0: float, H: int, dt: float,
-        w_contour: float, w_lag: float,
-    ) -> float:
-        """Evaluate a multi-step trajectory where delta decays across the horizon.
-
-        delta[k] = delta_0 * 0.7^k  (geometric decay: bold first step, tapering)
-        """
-        cost = 0.0
-        c = cwnd
-        qd = q_delay
-        decay = 0.7
-
-        for k in range(H):
-            delta = delta_0 * (decay ** k)
-
-            # Dynamics
-            c = max(c + delta, float(self.mtu))
-            rtt_k = max(base_rtt + qd, 0.001)
-            send_rate = c / rtt_k
-            throughput = min(send_rate, bw)
-
-            # Queue dynamics
-            excess_rate = send_rate - bw
-            qd = max(0.0, qd + excess_rate * dt / max(bw, 1.0))
-
-            # Cost with adaptive weights
-            contour_err = qd - target_delay
-            lag_err = (throughput - target_tput) / max(target_tput, 1.0)  # normalized
-
-            cost += (w_contour * contour_err ** 2
-                     + w_lag * lag_err ** 2
-                     + self._w_smooth * (delta / max(self.mtu, 1.0)) ** 2
-                     - self._w_progress * throughput / max(target_tput, 1.0))
-
-        return cost
+    def set_n_flows(self, n: int) -> None:
+        """Update the number of competing flows for fairness penalty (eq. 11)."""
+        self._n_flows = max(n, 1)
+        self._sync_net_solver_params()
 
     # ------------------------------------------------------------------
     # Reset
@@ -431,17 +661,18 @@ class MPCCController(CongestionController):
         self._rtt_est.reset()
         self._bw_est.reset()
         self._delivery_rate.reset()
-        self._base_rtt_s = 0.0
-        self._estimated_bw_bytes_per_s = 0.0
-        self._estimated_queue_delay_s = 0.0
-        self._bdp_bytes = 0.0
-        self._loss_in_last_rtt = False
+        self._T_hat = 0.0
+        self._R_hat = 0.0
+        self._q = 0.0
+        self._C = 0.0
+        self._R0 = 0.0
+        self._s_opt = 0.0
+        self._prev_s_seq = None
         self._last_solve_time_s = 0.0
-        self._probe_phase = _ProbePhase.CRUISE
-        self._probe_rtts_remaining = 0
-        self._rtts_since_probe = 0
+        self._last_update_time_s = 0.0
         self._ss_ack_count = 0
         self._state = CCAState.SLOW_START
+        self._net_solver = None
 
     # ------------------------------------------------------------------
     # Convergence properties
@@ -458,37 +689,33 @@ class MPCCController(CongestionController):
         allocation because:
 
         1. AIMD COMPATIBILITY:
-           - Additive increase: delta_cwnd <= AI_max per RTT
+           - Additive increase: the MPC optimiser selects a sending rate
+             s* within the feasible set [0, s_max] at each step
            - Multiplicative decrease: cwnd *= (1 - MD_factor) on loss
            - This is a standard AIMD controller, which Chiu & Jain (1989)
              proved converges to fairness.
 
-        2. MPC OPTIMALITY WITHIN AIMD BOUNDS:
-           - The MPC optimizer selects delta_cwnd within [-MD*cwnd, AI_max]
-           - It minimizes a quadratic cost over the prediction horizon
-           - The cost penalizes both delay (congestion) and throughput deficit
-           - Within the AIMD-feasible set, MPC picks the *best* adjustment
+        2. MPC OPTIMALITY WITHIN CONSTRAINTS:
+           - The finite-horizon program (eq. 12) minimises the contouring cost subject to:
+               0 <= s_k <= s_max        (rate bounds)
+               0 <= q_k <= q_max        (queue bounds)
+               R_hat_k <= 4*R*          (RTT bound)
+           - The cost penalises contouring error (deviation from the
+             Pareto frontier), lag error (throughput shortfall), delay
+             excess, and rate jitter, while rewarding Kleinrock's power.
 
         3. LYAPUNOV STABILITY:
-           - Define V(t) = w_c*(q(t) - q*)^2 + w_l*(r(t) - r*)^2
-             where q is queue delay, r is throughput, * denotes targets
-           - The MPC cost J >= V(t+1) - V(t) by construction
-           - Since MPC minimizes J, it drives V toward zero
-           - V is positive definite and radially unbounded -> stability
+           - Define V(t) = w_c*(e_c(t))^2 + w_l*(e_l(t))^2
+             where e_c, e_l are contouring and lag errors relative to
+             the reference trajectory Gamma(theta).
+           - The MPC cost J >= V(t+1) - V(t) by construction.
+           - Since MPC minimises J, it drives V toward zero.
+           - V is positive definite and radially unbounded -> stability.
 
         4. FAIRNESS:
-           - N flows sharing a bottleneck: each runs AIMD with MPC-tuned AI
-           - On loss (shared signal), all flows MD by same factor
-           - Between losses, AI rates are bounded by AI_max
-           - Converges to proportional fairness (Jain index -> 1 as N -> inf)
-
-        5. CELLULAR ROBUSTNESS:
-           - The bandwidth estimator tracks varying capacity via max-filter
-           - The MPC horizon spans multiple RTTs, smoothing over burst noise
-           - Queue delay target provides a soft bound on buffering
-           - Adaptive weights shift between throughput-priority (empty queue)
-             and delay-priority (building queue)
-           - BBR-style probing discovers bandwidth headroom periodically
-           - Stochastic losses (not congestion) trigger MD but the MPC
-             quickly recovers via the throughput-deficit cost term
+           - The fairness penalty w_f*(s_k - C/n)^2 (eq. 11) drives
+             each flow toward its fair share C/n.
+           - N flows sharing a bottleneck: each runs AIMD with MPC-tuned
+             sending rate.  On loss (shared signal), all flows MD by the
+             same factor -> convergence to proportional fairness.
         """

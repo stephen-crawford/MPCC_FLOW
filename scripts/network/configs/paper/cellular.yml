@@ -11,6 +11,9 @@ network:
   rtt_target: 0.100
   q_max: 250000
   n_flows: 1
+  # Cellular traces swing capacity fast — let the planner traverse the curve
+  # faster so it can chase the moving frontier.
+  v_theta_max: 8.0
 
 # Cellular traces carry large capacity swings and high natural delay jitter.
 # Compared to wired:
@@ -27,3 +30,6 @@ weights:
   power_weight: 0.1
   acceleration_weight: 2.0
   fairness_weight: 0.0
+  # Reward progress more aggressively on cellular so the controller does not
+  # under-utilize during deep capacity dips (paper §V.B's observed failure).
+  theta_progress_weight: 20.0

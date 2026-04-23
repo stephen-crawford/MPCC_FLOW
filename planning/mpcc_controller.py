@@ -47,7 +47,13 @@ class MPCCController:
             self._last_rate = max(self._last_rate * 0.5, self.rate_max * 0.05)
             return self._last_rate
 
-        result = self.solver.solve(obs.tput, obs.rtt, obs.queue, obs.bw_est)
+        result = self.solver.solve(
+            obs.tput,
+            obs.rtt,
+            obs.queue,
+            obs.bw_est,
+            u_prev_bps=self._last_rate,
+        )
         self._last_result = result
 
         if result.success:

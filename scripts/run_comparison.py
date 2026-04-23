@@ -23,7 +23,7 @@ FACTORIES = {
     "SproutEWMA": lambda: SproutEWMA(),
     "Verus": lambda: Verus(R=4.0),
     "ABC": lambda: ABC(eta=0.7),
-    "MPCC": lambda: MPCCController(horizon=8, target_delay_ms=50.0),
+    "MPCC": lambda: MPCCController(horizon=8, target_rtt_s=0.070),
 }
 
 LINK = LinkConfig(propagation_delay_ms=20, queue_size_bytes=150_000)
