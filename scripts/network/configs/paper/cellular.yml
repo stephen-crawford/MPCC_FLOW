@@ -1,0 +1,29 @@
+planner:
+  horizon: 10
+  timestep: 0.020
+
+network:
+  rtt_prop: 0.040
+  tau_rtt: 0.1
+  tau_tput: 0.1
+  rate_max: 40.0e6
+  alpha: 0.150
+  rtt_target: 0.100
+  q_max: 250000
+  n_flows: 1
+
+# Cellular traces carry large capacity swings and high natural delay jitter.
+# Compared to wired:
+#   - acceleration_weight increased so the controller smooths through capacity
+#     dips instead of slamming rate up/down every tick.
+#   - delay_weight softened: LTE already pays ~50 ms queueing at the tower;
+#     penalizing it too hard starves the controller of throughput.
+#   - contour_weight slightly raised to keep the operating point anchored to
+#     the curve as the peak capacity wanders.
+weights:
+  contour_weight: 80.0
+  contouring_lag_weight: 1.0
+  delay_weight: 40.0
+  power_weight: 0.1
+  acceleration_weight: 2.0
+  fairness_weight: 0.0

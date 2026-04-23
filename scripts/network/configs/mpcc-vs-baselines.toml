@@ -1,0 +1,25 @@
+# Head-to-head: MPCC vs every classical baseline the harness supports.
+# Runs the baseline traffic as an iperf flow cycling across cubic/bbr/reno,
+# and the MPCC CCP flow through the ccp kernel module.
+
+[[link]]
+bw = '48mbps'
+rtt = '40ms'
+qsize = '1 bdp'
+
+[[link.mm_link_queue]]
+name = "droptail"
+_qsize_arg = "packets=$qsize_pkts"
+
+[[traffic]]
+[[traffic.'#1']]
+type = 'mpcc'
+dport = 4242
+duration_sec = 60
+solver = 'qp'
+
+[[traffic.'#2']]
+type = 'iperf'
+cca = ['cubic', 'bbr', 'reno']
+dport = 4243
+duration_sec = 60

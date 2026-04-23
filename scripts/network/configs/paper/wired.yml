@@ -1,0 +1,21 @@
+planner:
+  horizon: 8
+  timestep: 0.020
+
+network:
+  rtt_prop: 0.040
+  tau_rtt: 0.1
+  tau_tput: 0.1
+  rate_max: 60.0e6
+  alpha: 0.060
+  rtt_target: 0.050
+  q_max: 200000
+  n_flows: 1
+
+weights:
+  contour_weight: 50.0
+  contouring_lag_weight: 1.0
+  delay_weight: 100.0
+  power_weight: 0.1
+  acceleration_weight: 0.5
+  fairness_weight: 0.0

@@ -1,0 +1,27 @@
+# Wired scenario: constant 50 Mbps bottleneck, 40 ms RTT.
+# One MPCC flow competes against one CUBIC flow.
+
+[[link]]
+bw = '50mbps'
+rtt = '40ms'
+qsize = '1 bdp'
+
+[[link.mm_link_queue]]
+name = "droptail"
+_qsize_arg = "packets=$qsize_pkts"
+
+[[traffic]]
+[[traffic.'#1']]
+type = 'mpcc'
+dport = 4242
+duration_sec = 60
+# mpcc_bin = '/home/user/portus-mpcc/target/release/mpcc_cca'
+# mpcc_config = '/home/user/mpcc_flow/config/CONFIG_NETWORK.yml'
+solver = 'qp'
+horizon = 8
+
+[[traffic.'#2']]
+type = 'iperf'
+cca = 'cubic'
+dport = 4243
+duration_sec = 60

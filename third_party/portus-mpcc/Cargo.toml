@@ -1,0 +1,29 @@
+[package]
+name = "portus-mpcc"
+version = "0.1.0"
+edition = "2021"
+description = "Model Predictive Contouring Control CCP algorithm — portus/Rust port of mpcc_flow's planning/network_solver.py"
+license = "MIT"
+
+[[bin]]
+name = "mpcc_cca"
+path = "src/bin/mpcc_cca.rs"
+
+[dependencies]
+# `portus` is the CCP runtime. This expects you to clone ccp-project/portus
+# next to this crate so the path is resolvable.
+portus = { path = "../../../portus" }
+clap = { version = "4", features = ["derive"] }
+env_logger = "0.11"
+log = "0.4"
+nalgebra = "0.33"
+serde_yaml = { version = "0.9", optional = true }
+
+[features]
+default = ["yaml"]
+yaml = ["dep:serde_yaml"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

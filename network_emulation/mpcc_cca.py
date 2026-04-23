@@ -61,7 +61,9 @@ class MPCCFlow:
         self.mss = datapath_info.mss
         self.init_cwnd = float(self.mss * 10)
 
-        self.controller = MPCCController(config)
+        cfg = config or {}
+        solver_mode = cfg.get("solver_mode", "qp")
+        self.controller = MPCCController(cfg, solver_type=solver_mode)
         self.last_report_time = time.monotonic()
 
         self.datapath.set_program("default", [("Cwnd", int(self.init_cwnd))])
@@ -106,6 +108,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="mpcc-cca")
     parser.add_argument("--ipc", default="netlink", choices=["netlink", "unix"])
     parser.add_argument("--config", type=str, default=None)
+    parser.add_argument("--horizon", type=int, default=None,
+                        help="Override planner horizon N.")
+    parser.add_argument("--solver", default="qp", choices=["qp", "nlp"],
+                        help="QP linearization (fast) or full NLP (reference).")
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args(argv)
 
@@ -118,11 +124,14 @@ def main(argv=None):
         logger.error("pyportus not installed")
         return 1
 
-    config = None
+    config: dict = {}
     if args.config:
         import yaml
         with open(args.config) as f:
-            config = yaml.safe_load(f)
+            config = yaml.safe_load(f) or {}
+    if args.horizon is not None:
+        config.setdefault("planner", {})["horizon"] = args.horizon
+    config["solver_mode"] = args.solver
 
     alg = MPCCAlgorithm(config)
     portus.start(args.ipc, alg)

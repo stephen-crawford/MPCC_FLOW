@@ -93,7 +93,8 @@ def test_ccp_kernel_module_for_nimbus_runtime() -> None:
 @pytest.mark.nimbus
 def test_nimbus_binary_under_resolved_root() -> None:
     root = nimbus_root()
-    assert (root / "Cargo.toml").is_file()
+    if not (root / "Cargo.toml").is_file():
+        pytest.skip(f"nimbus not cloned at {root} — run scripts/network/setup_baselines.sh")
     bin_release = root / "target" / "release" / "nimbus"
     if not bin_release.is_file():
         pytest.skip("run: cargo build --release (under nimbus_root)")

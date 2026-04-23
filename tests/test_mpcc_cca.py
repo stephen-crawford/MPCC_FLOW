@@ -142,9 +142,13 @@ class TestMPCCAlgorithmImport:
 class TestExperimentRunnerImport:
 
     def test_algorithms_registry(self):
-        from scripts.network.run_cc_experiments import ALGORITHMS
-        assert "mpcc" in ALGORITHMS
-        assert "cubic" in ALGORITHMS
+        from scripts.network.run_cc_experiments import CCAS
+        assert "mpcc" in CCAS
+        assert "cubic" in CCAS
+        assert "bbr" in CCAS
+        assert "sprout" in CCAS
+        assert "verus" in CCAS
+        assert "nimbus" in CCAS
 
     def test_trace_discovery(self):
         pairs = list(
@@ -157,4 +161,6 @@ class TestExperimentRunnerImport:
         from scripts.network.run_cc_experiments import _parse_mm_link_log
         from pathlib import Path
         result = _parse_mm_link_log(Path("/nonexistent/path"))
-        assert result == []
+        assert result["throughput_ts"] == []
+        assert result["avg_mbps"] == 0.0
+        assert result["loss_rate"] == 0.0

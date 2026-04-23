@@ -1,0 +1,19 @@
+# NOPASSWD rules needed by scripts/network/run_paper_matrix.sh.
+#
+# Scope is narrow: only the specific commands the matrix invokes with
+# sudo, and only for the adigsram user. Nothing else is touched.
+#
+# Install:
+#   sudo install -m 0440 scripts/network/sudoers-mpcc-paper /etc/sudoers.d/mpcc-paper
+#   sudo visudo -c -f /etc/sudoers.d/mpcc-paper   # validate
+#
+# Remove:
+#   sudo rm /etc/sudoers.d/mpcc-paper
+
+adigsram ALL=(root) NOPASSWD: /usr/sbin/sysctl, \
+    /usr/bin/pkill, \
+    /usr/sbin/insmod, \
+    /usr/sbin/rmmod, \
+    /usr/bin/chown, \
+    /home/adigsram/Desktop/Research/networking/MPCC_FLOW/third_party/portus-mpcc/target/release/mpcc_cca, \
+    /home/adigsram/Desktop/Research/networking/nimbus-measurement/nimbus/target/release/nimbus

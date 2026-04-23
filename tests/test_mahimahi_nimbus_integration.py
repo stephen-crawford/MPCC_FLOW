@@ -107,3 +107,57 @@ def test_nimbus_rust_sources_readable() -> None:
         pytest.skip(f"NIMBUS_ROOT does not look like nimbus checkout: {root}")
     text = cargo.read_text(encoding="utf-8", errors="replace")
     assert "ccp_nimbus" in text or "nimbus" in text.lower()
+
+
+@pytest.mark.integration
+@pytest.mark.mahimahi
+def test_paper_config_yamls_are_complete() -> None:
+    """The paper matrix expects four per-scenario weight YAMLs under
+    scripts/network/configs/paper/. Verify they exist and parse."""
+    import yaml
+    root = Path(__file__).resolve().parent.parent / "scripts" / "network" / "configs" / "paper"
+    for scen in ("wired", "cellular", "leo", "fairness"):
+        p = root / f"{scen}.yml"
+        assert p.is_file(), f"missing {p}"
+        cfg = yaml.safe_load(p.read_text())
+        # Every scenario YAML must name every weight explicitly so paper
+        # ablations can zero individual terms without surprise defaults.
+        assert "weights" in cfg, p
+        for w in (
+            "contour_weight", "contouring_lag_weight", "delay_weight",
+            "power_weight", "acceleration_weight", "fairness_weight",
+        ):
+            assert w in cfg["weights"], f"{p} missing weights.{w}"
+
+
+@pytest.mark.integration
+@pytest.mark.mahimahi
+def test_portus_mpcc_binary_built() -> None:
+    """The Rust portus-mpcc binary is the production datapath. It must exist
+    before run_paper_matrix.sh fires, otherwise every MPCC run falls back to
+    kernel CUBIC and the paper's §V.A numbers are meaningless."""
+    from scripts.network.run_cc_experiments import _find_portus_mpcc
+    bin_path = _find_portus_mpcc()
+    if bin_path is None:
+        pytest.skip("build it first: cd third_party/portus-mpcc && cargo build --release")
+    # Sanity-check the binary announces itself as mpcc_cca.
+    r = subprocess.run([bin_path, "--help"], capture_output=True, text=True, timeout=10)
+    assert r.returncode == 0
+    assert "mpcc" in r.stdout.lower()
+
+
+@pytest.mark.integration
+@pytest.mark.mahimahi
+def test_paper_metrics_regex_matches_log_format() -> None:
+    """Guard against regressions in the mpcc_step log format that
+    paper_metrics.py relies on to extract solve times."""
+    from scripts.network.paper_metrics import MPCC_LOG_LINE
+    sample = (
+        "[2026-04-21T15:05:00Z INFO  portus_mpcc] "
+        "mpcc_step solve_ms=0.812 rate_bps=9.5e6 tput_bps=8.4e6 "
+        "rtt_us=41200 q_bytes=1500.5 success=1"
+    )
+    m = MPCC_LOG_LINE.search(sample)
+    assert m is not None
+    assert float(m.group("solve")) == pytest.approx(0.812)
+    assert int(m.group("rtt")) == 41200

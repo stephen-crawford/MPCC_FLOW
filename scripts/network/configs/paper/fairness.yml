@@ -1,0 +1,25 @@
+planner:
+  horizon: 8
+  timestep: 0.020
+
+network:
+  rtt_prop: 0.020
+  tau_rtt: 0.1
+  tau_tput: 0.1
+  rate_max: 100.0e6
+  alpha: 0.080
+  rtt_target: 0.060
+  q_max: 400000
+  n_flows: 4
+
+# Fairness stress test: 4 MPCC flows share a 96 Mbps bottleneck.
+#   - fairness_weight > 0 biases each sender toward C/n = 24 Mbps (paper Eq. 9).
+#   - delay_weight kept moderate so the flows still back off when the shared
+#     buffer fills, but not so high that fairness loses to delay in the cost.
+weights:
+  contour_weight: 50.0
+  contouring_lag_weight: 1.0
+  delay_weight: 60.0
+  power_weight: 0.1
+  acceleration_weight: 1.0
+  fairness_weight: 20.0

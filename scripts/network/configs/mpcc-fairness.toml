@@ -1,0 +1,40 @@
+# Fairness stress-test: 4 MPCC flows sharing a 96 Mbps bottleneck.
+# Validates the fairness penalty (paper Eq. 9).
+
+[[link]]
+bw = '96mbps'
+rtt = '20ms'
+qsize = '1 bdp'
+
+[[link.mm_link_queue]]
+name = "droptail"
+_qsize_arg = "packets=$qsize_pkts"
+
+[[traffic]]
+[[traffic.'#1']]
+type = 'mpcc'
+dport = 4242
+duration_sec = 60
+solver = 'qp'
+horizon = 8
+
+[[traffic.'#2']]
+type = 'mpcc'
+dport = 4243
+duration_sec = 60
+solver = 'qp'
+horizon = 8
+
+[[traffic.'#3']]
+type = 'mpcc'
+dport = 4244
+duration_sec = 60
+solver = 'qp'
+horizon = 8
+
+[[traffic.'#4']]
+type = 'mpcc'
+dport = 4245
+duration_sec = 60
+solver = 'qp'
+horizon = 8

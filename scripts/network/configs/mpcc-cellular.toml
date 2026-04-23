@@ -1,0 +1,28 @@
+# Cellular scenario: bw-shaped like a mid-20-Mbps LTE link with 30 ms RTT.
+# One MPCC flow against one BBR flow.
+#
+# For trace-driven replay, nimbus-measurement's mm-link fork supports .up/.down
+# files via the $qsize_pkts machinery below — replace bw with a trace path.
+
+[[link]]
+bw = '20mbps'
+rtt = '30ms'
+qsize = '1 bdp'
+
+[[link.mm_link_queue]]
+name = "droptail"
+_qsize_arg = "packets=$qsize_pkts"
+
+[[traffic]]
+[[traffic.'#1']]
+type = 'mpcc'
+dport = 4242
+duration_sec = 60
+solver = 'qp'
+horizon = 10
+
+[[traffic.'#2']]
+type = 'iperf'
+cca = 'bbr'
+dport = 4243
+duration_sec = 60
