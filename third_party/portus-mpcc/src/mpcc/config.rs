@@ -36,6 +36,14 @@ pub struct MpccConfig {
     /// along the reference curve. Must be > 0 or the controller parks at
     /// theta=0 (zero throughput).
     pub w_theta: f64,
+
+    /// Enable BBR-style probe-BW pacing (1.25× / 0.75× / 1.0××6 cycle on
+    /// top of the solver's rate) plus a sliding-window max-filter on
+    /// delivery rate. Needed on cellular traces where the link capacity
+    /// swings beneath `rate_max_bps`. Off by default: on stable wired /
+    /// LEO links the perturbations have no slack to probe and hurt
+    /// throughput.
+    pub probe_bw: bool,
 }
 
 impl Default for MpccConfig {
@@ -60,6 +68,7 @@ impl Default for MpccConfig {
             w_du: 0.5,
             w_fair: 0.0,
             w_theta: 10.0,
+            probe_bw: false,
         }
     }
 }
@@ -98,6 +107,9 @@ impl MpccConfig {
             }
             if let Some(v) = net.get("n_flows").and_then(|x| x.as_u64()) {
                 cfg.n_flows = v as usize;
+            }
+            if let Some(v) = net.get("probe_bw").and_then(|x| x.as_bool()) {
+                cfg.probe_bw = v;
             }
         }
         if let Some(w) = parsed.get("weights") {

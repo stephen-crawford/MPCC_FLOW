@@ -170,8 +170,10 @@ def fig_pareto(matrix_root: Path, out: Path):
 
         if prefix == "cellular":
             ax.set_xscale("log")
-            ax.set_ylim(7, 16)                       # mean ~10--12.5, clip outliers
-            ax.set_xlim(200, 7000)
+            # Widened to 4 Mbps floor so the probe-BW MPCC point (~5.5 Mbps
+            # at ~120 ms) stays comfortably above the x-axis.
+            ax.set_ylim(4, 16)
+            ax.set_xlim(80, 7000)
 
         ax.set_xlabel("Median RTT (ms) — lower is better")
         ax.set_ylabel("Throughput (Mbps) — higher is better")

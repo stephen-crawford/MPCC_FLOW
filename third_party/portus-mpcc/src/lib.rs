@@ -11,7 +11,7 @@
 //!   4. Update the CCP Cwnd field with u*[0] * rtt, bounded by the iperf
 //!      pacing regime.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::Instant;
 
 use log::{debug, info, warn};
@@ -91,6 +91,25 @@ impl<I: Ipc> CongAlg<I> for MpccAlgorithm {
     }
 }
 
+/// Sliding-window length for the BBR-style BtlBw max-filter (samples).
+const BW_WINDOW: usize = 10;
+/// Phases in the probe-BW cycle: one RTT of 1.25× probe, one RTT of 0.75×
+/// drain, then six RTTs of 1.0× steady --- same cadence as stock BBR.
+const PROBE_CYCLE: u32 = 8;
+const PROBE_UP_GAIN: f64 = 1.25;
+const PROBE_DOWN_GAIN: f64 = 0.75;
+/// Cold-start phases where we hold pacing gain at 1.0 so the BW filter
+/// populates with at least a few honest samples before we start probing.
+const COLD_START_REPORTS: u32 = 4;
+
+fn pacing_gain(phase: u32) -> f64 {
+    match phase % PROBE_CYCLE {
+        0 => PROBE_UP_GAIN,
+        1 => PROBE_DOWN_GAIN,
+        _ => 1.0,
+    }
+}
+
 pub struct MpccFlow<T: Ipc> {
     control: Datapath<T>,
     scope: Scope,
@@ -99,7 +118,16 @@ pub struct MpccFlow<T: Ipc> {
     last_report: Option<Instant>,
     last_rate_bps: f64,
     rtt_prop_us: Option<u32>,
+    /// Per-ACK delivery-rate samples for the BBR-style BtlBw max-filter.
+    /// Only used when ``cfg.probe_bw = true``; otherwise we keep the legacy
+    /// monotonic-max ``bw_peak_bps``.
+    bw_samples: VecDeque<f64>,
+    /// Legacy monotonic max of observed delivery rate, seeded at rate_max so
+    /// Γ(θ) has a well-defined scale from the first RTT. Used whenever
+    /// ``cfg.probe_bw = false``.
     bw_peak_bps: f64,
+    /// Monotonically-increasing report counter; pacing_gain cycles on this.
+    phase: u32,
     cfg: MpccConfig,
 }
 
@@ -111,13 +139,6 @@ impl<T: Ipc> MpccFlow<T> {
         cfg: MpccConfig,
     ) -> Self {
         let init_rate_bps = (info.init_cwnd as f64 * 8.0) / 0.1; // 10 mss / 100 ms
-        // Seed bw_peak_bps at rate_max_bps (the paper's link capacity C) so
-        // that the reference curve Γ(θ) has a well-defined scale from the
-        // first RTT. Without this seed, bw_peak bootstraps at ~0, the
-        // dynamics clip every predicted s at the tiny bootstrap, the cost
-        // has no gradient above the clip, and the solver collapses to
-        // min_rate_bps. We refine bw_peak downward over the run via RTT/queue
-        // feedback in the solver rather than by tracking observed tput.
         let bw_peak_bps = cfg.rate_max_bps.max(init_rate_bps);
         MpccFlow {
             control,
@@ -127,9 +148,25 @@ impl<T: Ipc> MpccFlow<T> {
             last_report: None,
             last_rate_bps: init_rate_bps,
             rtt_prop_us: None,
+            bw_samples: VecDeque::with_capacity(BW_WINDOW),
             bw_peak_bps,
+            phase: 0,
             cfg,
         }
+    }
+
+    /// bw_est (bps): max of the last BW_WINDOW per-ACK delivery rates,
+    /// or rate_max_bps during cold start. Floor 100 kbps so divisions in
+    /// the dynamics never see ~0.
+    fn bw_est_bps(&self) -> f64 {
+        if self.bw_samples.is_empty() {
+            return self.cfg.rate_max_bps.max(1e5);
+        }
+        self.bw_samples
+            .iter()
+            .cloned()
+            .fold(0.0_f64, f64::max)
+            .max(1e5)
     }
 }
 
@@ -171,8 +208,25 @@ impl<T: Ipc> Flow for MpccFlow<T> {
         let rtt_prop_s = self.rtt_prop_us.unwrap() as f64 / 1e6;
 
         let tput_bps = (acked as f64 * 8.0) / dt_s.max(1e-3);
-        self.bw_peak_bps = self.bw_peak_bps.max(tput_bps);
-        let bw_est_bps = self.bw_peak_bps.max(1.0);
+        let bw_est_bps = if self.cfg.probe_bw {
+            // Per-ACK delivery-rate sample feeds the BBR-style max-filter.
+            // The filter gives us a C that follows actual link capacity; the
+            // probe-BW pacing gain below gives the filter fresh high-water
+            // samples whenever the link has slack so C can grow after fades.
+            if tput_bps.is_finite() && tput_bps > 0.0 {
+                self.bw_samples.push_back(tput_bps);
+                while self.bw_samples.len() > BW_WINDOW {
+                    self.bw_samples.pop_front();
+                }
+            }
+            self.bw_est_bps()
+        } else {
+            // Legacy monotonic-max: stable on wired/LEO, but cannot shrink
+            // below the configured rate_max. That's the paper's shipped
+            // behavior and the baseline for Tables 1 & 3.
+            self.bw_peak_bps = self.bw_peak_bps.max(tput_bps);
+            self.bw_peak_bps.max(1.0)
+        };
 
         // Queue delay (seconds) from RTT inflation above rtt_prop; converted
         // into bytes at the bandwidth estimate, matching network_solver.py.
@@ -181,12 +235,25 @@ impl<T: Ipc> Flow for MpccFlow<T> {
 
         // --- Solve ------------------------------------------------------
         let result = self.solver.solve(tput_bps, rtt_s, q_bytes, bw_est_bps);
-        let rate_bps = if result.success {
+        let base_rate_bps = if result.success {
             result.send_rate_bps
         } else {
             debug!("MPCC solve failed, holding rate {}", self.last_rate_bps);
             self.last_rate_bps
         };
+
+        // Probe-BW pacing gain: one RTT up at 1.25×, one down at 0.75×,
+        // six at 1.0× (BBR's ProbeBW cadence). Only enabled when the
+        // config opts in (cellular.yml sets probe_bw: true); on stable
+        // wired / LEO links the perturbations have no slack to probe for.
+        let gain = if self.cfg.probe_bw && self.phase >= COLD_START_REPORTS {
+            pacing_gain(self.phase)
+        } else {
+            1.0
+        };
+        self.phase = self.phase.wrapping_add(1);
+        let rate_bps = (base_rate_bps * gain)
+            .clamp(self.cfg.min_rate_bps, self.cfg.rate_max_bps);
         self.last_rate_bps = rate_bps;
 
         // cwnd (bytes) = send_rate (bps) * rtt_prop (s) / 8.

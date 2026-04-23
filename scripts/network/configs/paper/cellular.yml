@@ -14,6 +14,12 @@ network:
   # Cellular traces swing capacity fast — let the planner traverse the curve
   # faster so it can chase the moving frontier.
   v_theta_max: 8.0
+  # BBR-style probe-BW pacing cycle + sliding-window max-filter on
+  # delivery rate. Needed on cellular so Γ(θ)'s capacity C can shrink
+  # during fades and re-grow via probing. Leave off (default) on wired /
+  # LEO, where the link is mostly saturated and the 0.75× drain phase
+  # would collapse throughput without discovering any slack.
+  probe_bw: true
 
 # Cellular traces carry large capacity swings and high natural delay jitter.
 # Compared to wired:
