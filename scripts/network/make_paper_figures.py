@@ -64,6 +64,18 @@ def agg_tput_rtt(matrix_root: Path, scenario_prefix: str, cca: str):
     return np.array(ts), np.array(rs)
 
 
+def agg_tput_rtt_cellular(matrix_root: Path, carrier_dir: str, cca: str):
+    """Return (tputs, rtts) for one cellular carrier directory."""
+    ts, rs = [], []
+    for f in glob.glob(str(matrix_root / "cellular" / carrier_dir / cca / "seed*" / "metrics.json")):
+        r = json.load(open(f))
+        t = r.get("avg_throughput_mbps", 0)
+        if t > 0.5:
+            ts.append(t)
+            rs.append(r["median_rtt_ms"])
+    return np.array(ts), np.array(rs)
+
+
 def fig_pareto(matrix_root: Path, out: Path):
     """Clean three-panel Pareto plot (wired | cellular | LEO).
 
@@ -113,6 +125,37 @@ def fig_pareto(matrix_root: Path, out: Path):
     PARETO_RED = "#d62728"
     DOMIN_BLUE = "#3b6aa0"
 
+    # Hand-tuned per-CCA label offsets (in display points) for every
+    # panel. adjust_text was unreliable — on cellular it flung MPCC
+    # across the panel, and on wired/LEO it sometimes overlapped the
+    # Pareto line. Explicit offsets keep labels hugging their dots while
+    # dodging neighboring markers and the Pareto curve.
+    LABEL_OFFSETS = {
+        "wired": {
+            "mpcc":   ( 14,   0, "left",   "center"),
+            "bbr":    ( 14,   0, "left",   "center"),
+            "cubic":  (  0, -14, "center", "top"),
+            "reno":   ( 10,   8, "left",   "bottom"),
+            "nimbus": (  0,  12, "center", "bottom"),
+        },
+        "cellular": {
+            "mpcc":   ( 14,   6, "left",   "bottom"),
+            "bbr":    ( -6,  12, "right",  "bottom"),
+            "reno":   ( 10,   8, "left",   "bottom"),
+            "nimbus": ( 12,  -1, "left",   "center"),
+            "cubic":  (  0, -14, "center", "top"),
+        },
+        "leo-s": {
+            "mpcc":   ( 14,   0, "left",   "center"),
+            "bbr":    (  0,  12, "center", "bottom"),
+            "cubic":  (  0, -14, "center", "top"),
+            # RENO dot is at the top of the panel — push the label
+            # right instead of up so it doesn't collide with the title.
+            "reno":   ( 10,   0, "left",   "center"),
+            "nimbus": ( 14,   0, "left",   "center"),
+        },
+    }
+
     for prefix, ax, title in panels:
         ccas = cca_means(prefix)
         if not ccas:
@@ -133,40 +176,25 @@ def fig_pareto(matrix_root: Path, out: Path):
             ax.plot(xs_d, curve, color=PARETO_RED,
                     linewidth=2.5, zorder=2, alpha=0.95)
 
-        # Markers + error bars.
-        texts = []
-        for cca, (r, t, rs_std, ts_std) in ccas.items():
+        # Markers only — error bars removed for clarity.
+        panel_offsets = LABEL_OFFSETS.get(prefix, {})
+        for cca, (r, t, _rs_std, _ts_std) in ccas.items():
             color = PARETO_RED if cca in pf else DOMIN_BLUE
-            ax.errorbar(r, t, xerr=rs_std, yerr=ts_std,
-                        fmt="o", markersize=12,
-                        color=color, markeredgecolor="black",
-                        markeredgewidth=0.7,
-                        ecolor=color, elinewidth=0.7, capsize=2.5,
-                        alpha=1.0, zorder=4)
-            # Keep the error bars themselves quieter so labels dominate.
-            for line in ax.containers[-1].lines[1:]:
-                for ln in (line if isinstance(line, tuple) else [line]):
-                    try:
-                        ln.set_alpha(0.35)
-                    except Exception:
-                        pass
+            ax.plot(r, t, marker="o", markersize=12,
+                    color=color, markeredgecolor="black",
+                    markeredgewidth=0.7,
+                    linestyle="none", zorder=4)
             nicename = "MPCC" if cca == "mpcc" else cca.upper()
-            texts.append(ax.text(
-                r, t, nicename, fontsize=11,
-                fontweight="bold" if cca == "mpcc" else "normal",
-                color="black",
-                zorder=5,
-            ))
-
-        # Let adjustText lay the labels out so they do not overlap.
-        try:
-            adjust_text(
-                texts, ax=ax,
-                arrowprops=dict(arrowstyle="-", color="gray", lw=0.5),
-                expand_points=(1.7, 1.8), expand_text=(1.25, 1.3),
+            dx, dy, ha, va = panel_offsets.get(
+                cca, (8, 8, "left", "bottom")
             )
-        except Exception:
-            pass
+            ax.annotate(
+                nicename, xy=(r, t),
+                xytext=(dx, dy), textcoords="offset points",
+                fontsize=11,
+                fontweight="bold" if cca == "mpcc" else "normal",
+                color="black", zorder=5, ha=ha, va=va,
+            )
 
         if prefix == "cellular":
             ax.set_xscale("log")
@@ -180,6 +208,127 @@ def fig_pareto(matrix_root: Path, out: Path):
         ax.set_title(title, fontsize=11)
 
     # One small caption-style legend at the bottom.
+    from matplotlib.lines import Line2D
+    fig.legend(
+        handles=[
+            Line2D([0], [0], marker="o", color="white",
+                   markerfacecolor=PARETO_RED, markeredgecolor="black",
+                   markersize=9, label="Pareto-optimal CCA"),
+            Line2D([0], [0], marker="o", color="white",
+                   markerfacecolor=DOMIN_BLUE, markeredgecolor="black",
+                   markersize=9, label="Dominated CCA"),
+            Line2D([0], [0], color=PARETO_RED, linewidth=2.5,
+                   label="Pareto front"),
+        ],
+        loc="upper center", bbox_to_anchor=(0.5, 1.02),
+        ncol=3, frameon=False, fontsize=10,
+    )
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig(out, bbox_inches="tight", dpi=300)
+    plt.close(fig)
+
+
+def fig_pareto_cellular(matrix_root: Path, out: Path):
+    """Per-carrier cellular Pareto plot: ATT | T-Mobile | Verizon.
+
+    Same visual language as ``fig_pareto`` but one column per LTE
+    carrier trace instead of a single combined ``cellular`` panel.
+    """
+    import seaborn as sns
+    from scipy.interpolate import PchipInterpolator
+
+    sns.set_theme(style="whitegrid", context="paper", font_scale=1.05)
+
+    def cca_means(carrier_dir: str):
+        out_ = {}
+        for cca in CCAs:
+            ts, rs = agg_tput_rtt_cellular(matrix_root, carrier_dir, cca)
+            if ts.size == 0:
+                continue
+            out_[cca] = (float(rs.mean()), float(ts.mean()),
+                          float(rs.std()) if rs.size > 1 else 0.0,
+                          float(ts.std()) if ts.size > 1 else 0.0)
+        return out_
+
+    def pareto(ccas):
+        keep = set()
+        for a, (ra, ta, _, _) in ccas.items():
+            dominated = False
+            for b, (rb, tb, _, _) in ccas.items():
+                if a == b:
+                    continue
+                if rb <= ra and tb >= ta and (rb < ra or tb > ta):
+                    dominated = True
+                    break
+            if not dominated:
+                keep.add(a)
+        return keep
+
+    PARETO_RED = "#d62728"
+    DOMIN_BLUE = "#3b6aa0"
+
+    carriers = [
+        ("ATT-LTE-driving",     "ATT LTE (driving)"),
+        ("TMobile-LTE-driving", "T-Mobile LTE (driving)"),
+        ("Verizon-LTE-driving", "Verizon LTE (driving)"),
+    ]
+
+    # Default offsets are the same hand-tuned ones used for the combined
+    # cellular panel; individual carriers can override if a dot lands
+    # somewhere the default collides with the Pareto curve.
+    DEFAULT_OFFSETS = {
+        "mpcc":   ( 14,   6, "left",   "bottom"),
+        "bbr":    ( -6,  12, "right",  "bottom"),
+        "reno":   ( 10,   8, "left",   "bottom"),
+        "nimbus": ( 12,  -1, "left",   "center"),
+        "cubic":  (  0, -14, "center", "top"),
+    }
+
+    fig, axes = plt.subplots(1, 3, figsize=(14.0, 4.2))
+
+    for (carrier_dir, title), ax in zip(carriers, axes):
+        ccas = cca_means(carrier_dir)
+        if not ccas:
+            ax.set_title(f"{title} (no data)", fontsize=11)
+            continue
+        pf = pareto(ccas)
+
+        if len(pf) >= 2:
+            pts = sorted(((ccas[c][0], ccas[c][1]) for c in pf),
+                         key=lambda p: p[0])
+            xs = [p[0] for p in pts]
+            ys = [p[1] for p in pts]
+            try:
+                xs_d = np.linspace(min(xs), max(xs), 200)
+                curve = PchipInterpolator(xs, ys)(xs_d)
+            except Exception:
+                xs_d, curve = xs, ys
+            ax.plot(xs_d, curve, color=PARETO_RED,
+                    linewidth=2.5, zorder=2, alpha=0.95)
+
+        for cca, (r, t, _rs_std, _ts_std) in ccas.items():
+            color = PARETO_RED if cca in pf else DOMIN_BLUE
+            ax.plot(r, t, marker="o", markersize=12,
+                    color=color, markeredgecolor="black",
+                    markeredgewidth=0.7,
+                    linestyle="none", zorder=4)
+            nicename = "MPCC" if cca == "mpcc" else cca.upper()
+            dx, dy, ha, va = DEFAULT_OFFSETS.get(
+                cca, (8, 8, "left", "bottom")
+            )
+            ax.annotate(
+                nicename, xy=(r, t),
+                xytext=(dx, dy), textcoords="offset points",
+                fontsize=11,
+                fontweight="bold" if cca == "mpcc" else "normal",
+                color="black", zorder=5, ha=ha, va=va,
+            )
+
+        ax.set_xscale("log")
+        ax.set_xlabel("Median RTT (ms) — lower is better")
+        ax.set_ylabel("Throughput (Mbps) — higher is better")
+        ax.set_title(title, fontsize=11)
+
     from matplotlib.lines import Line2D
     fig.legend(
         handles=[
@@ -340,6 +489,7 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
 
     fig_pareto(matrix_root, args.out / "pareto.png")
+    fig_pareto_cellular(matrix_root, args.out / "pareto_cellular.png")
     fig_fairness(matrix_root, args.out / "fairness.png")
     fig_solve_cdf(matrix_root, args.out / "solve_cdf.png")
     fig_leo_timeseries(matrix_root, args.out / "leo_timeseries.png")

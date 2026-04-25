@@ -6,9 +6,23 @@ network:
   rtt_prop: 0.040
   tau_rtt: 0.1
   tau_tput: 0.1
+  # rate_max kept at 40e6: raising to 80 was tested and regressed TMobile
+  # throughput by ~1.2 Mbps (15.17 → 13.95). The cap acts as an accidental
+  # brake on overshoot during BW-filter spikes; removing it causes brief
+  # 50-60 Mbps sends that overflow the queue and trigger AIMD decrease.
   rate_max: 40.0e6
-  alpha: 0.150
-  rtt_target: 0.100
+  # Option C: extend reference trajectory endpoint Γ(θ=1) = rtt_prop + alpha
+  # from 0.190 s to 0.290 s so the contouring cost doesn't punish the
+  # high-throughput / high-delay portion of the curve cellular links can
+  # reach. Raise carefully — also lifts rtt_target equivalent above to
+  # avoid the hinge re-firing inside the reference trajectory.
+  alpha: 0.250
+  # Option 1: raise rtt_target so the delay hinge only fires past the
+  # reference trajectory's endpoint Γ_R(1) = rtt_prop + alpha. With alpha
+  # bumped to 0.25 for Option C, the endpoint is 0.290 s, so rtt_target
+  # must stay at or above that to keep the hinge outside the operating
+  # range. Previously 0.200 with alpha=0.150.
+  rtt_target: 0.300
   q_max: 250000
   n_flows: 1
   # Cellular traces swing capacity fast — let the planner traverse the curve
@@ -20,6 +34,14 @@ network:
   # LEO, where the link is mostly saturated and the 0.75× drain phase
   # would collapse throughput without discovering any slack.
   probe_bw: true
+  # Cellular capacity swings 3–5× between fades and peaks; stock BBR's
+  # 1.25× probe-up often stays below the current max-filter high-water
+  # and the filter never sees the new peak. 1.5× gives the max-filter
+  # fresh high samples on every probe cycle. Reducing to 1.35 was tested
+  # against ATT's 349 ms p95 and did not reduce ATT RTT (narrow link is
+  # queueing at the solver's steady rate, not during probe-up), while
+  # costing 19% TMobile throughput — so 1.5 is retained.
+  probe_up_gain: 1.5
 
 # Cellular traces carry large capacity swings and high natural delay jitter.
 # Compared to wired:
@@ -32,8 +54,13 @@ network:
 weights:
   contour_weight: 80.0
   contouring_lag_weight: 1.0
-  delay_weight: 40.0
+  # Lowered from 40 alongside rtt_target=0.200 — the hinge fires less
+  # often, so its weight no longer needs to dominate.
+  delay_weight: 15.0
   power_weight: 0.1
+  # Kept at 2.0: lowering to 1.0 was tested and cost TMobile 1.4 Mbps.
+  # Softer Δrate penalty let the solver over-react to transient BW-filter
+  # spikes, causing oscillation in TMobile's high-variance peak regime.
   acceleration_weight: 2.0
   fairness_weight: 0.0
   # Reward progress more aggressively on cellular so the controller does not

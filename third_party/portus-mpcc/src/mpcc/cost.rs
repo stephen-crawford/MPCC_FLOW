@@ -25,7 +25,17 @@ pub fn total_cost(
     let fair_share = bw_safe / cfg.n_flows.max(1) as f64;
     let mut cost = 0.0;
 
-    for (k, (t, r, _q)) in traj.iter().copied().enumerate() {
+    // Target queue occupancy in bytes (0 disables the term). On cellular
+    // we set this to ~0.5 × BDP so the controller keeps a small queue to
+    // cushion capacity fades, BBR-style.
+    let q_target_bytes = if cfg.q_target_frac > 0.0 {
+        cfg.q_target_frac * bw_safe * cfg.rtt_prop_s / 8.0
+    } else {
+        0.0
+    };
+    let q_max_sq = cfg.q_max_bytes.max(1.0).powi(2);
+
+    for (k, (t, r, q)) in traj.iter().copied().enumerate() {
         let theta_k = theta_seq[k];
         let (e_c, e_l) = errors_at_theta(t, r, theta_k, bw_safe, cfg.rtt_prop_s, cfg.alpha);
         cost += cfg.w_contour * e_c * e_c;
@@ -33,6 +43,12 @@ pub fn total_cost(
 
         let excess = ((r - cfg.rtt_target_s) / cfg.rtt_target_s).max(0.0);
         cost += cfg.w_delay * excess * excess;
+
+        // Queue-target quadratic: pull q toward q_target_bytes when enabled.
+        if cfg.q_target_frac > 0.0 && cfg.w_q_target > 0.0 {
+            let dq = q - q_target_bytes;
+            cost += cfg.w_q_target * (dq * dq) / q_max_sq;
+        }
 
         // Kleinrock power (reward, subtracted).
         cost -= cfg.w_power * (t / bw_safe) / (r / cfg.rtt_prop_s + 1e-6);

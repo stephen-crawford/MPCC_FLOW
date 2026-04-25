@@ -44,6 +44,25 @@ pub struct MpccConfig {
     /// LEO links the perturbations have no slack to probe and hurt
     /// throughput.
     pub probe_bw: bool,
+
+    /// Target queue-occupancy fraction of the BDP. When > 0 the stage cost
+    /// adds `w_q_target * ((q - q_target) / q_max)^2` with
+    /// `q_target = q_target_frac * bw * rtt_prop / 8` bytes, biasing the
+    /// planner toward a non-empty buffer. On cellular this cushions
+    /// capacity fades (~50 Mbps → 5 Mbps transients) so MPCC doesn't run
+    /// dry when the link momentarily drops. Default 0: keep buffer empty.
+    pub q_target_frac: f64,
+    /// Weight on the queue-target cost term; ignored when
+    /// ``q_target_frac == 0``.
+    pub w_q_target: f64,
+
+    /// Probe-BW up-phase pacing gain (multiplies the solver's rate for one
+    /// RTT per cycle). Default 1.25 matches stock BBR. Cellular sweeps 3–5×
+    /// in capacity so a larger gain (≥1.5) discovers peaks that 1.25× keeps
+    /// below the max-filter's current high-water mark.
+    pub probe_up_gain: f64,
+    /// Probe-BW drain-phase pacing gain. Default 0.75 matches stock BBR.
+    pub probe_down_gain: f64,
 }
 
 impl Default for MpccConfig {
@@ -69,6 +88,10 @@ impl Default for MpccConfig {
             w_fair: 0.0,
             w_theta: 10.0,
             probe_bw: false,
+            q_target_frac: 0.0,
+            w_q_target: 0.0,
+            probe_up_gain: 1.25,
+            probe_down_gain: 0.75,
         }
     }
 }
@@ -100,6 +123,9 @@ impl MpccConfig {
                 ("rtt_target", &mut cfg.rtt_target_s),
                 ("q_max", &mut cfg.q_max_bytes),
                 ("v_theta_max", &mut cfg.v_theta_max),
+                ("q_target_frac", &mut cfg.q_target_frac),
+                ("probe_up_gain", &mut cfg.probe_up_gain),
+                ("probe_down_gain", &mut cfg.probe_down_gain),
             ] {
                 if let Some(v) = net.get(key).and_then(|x| x.as_f64()) {
                     *dest = v;
@@ -121,6 +147,7 @@ impl MpccConfig {
                 ("acceleration_weight", &mut cfg.w_du),
                 ("fairness_weight", &mut cfg.w_fair),
                 ("theta_progress_weight", &mut cfg.w_theta),
+                ("q_target_weight", &mut cfg.w_q_target),
             ] {
                 if let Some(v) = w.get(key).and_then(|x| x.as_f64()) {
                     *dest = v;

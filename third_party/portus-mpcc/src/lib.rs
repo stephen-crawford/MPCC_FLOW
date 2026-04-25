@@ -92,20 +92,27 @@ impl<I: Ipc> CongAlg<I> for MpccAlgorithm {
 }
 
 /// Sliding-window length for the BBR-style BtlBw max-filter (samples).
-const BW_WINDOW: usize = 10;
-/// Phases in the probe-BW cycle: one RTT of 1.25× probe, one RTT of 0.75×
-/// drain, then six RTTs of 1.0× steady --- same cadence as stock BBR.
-const PROBE_CYCLE: u32 = 8;
-const PROBE_UP_GAIN: f64 = 1.25;
-const PROBE_DOWN_GAIN: f64 = 0.75;
+/// At ~20 ms report cadence, 30 samples ≈ 600 ms of history — long enough
+/// for a cellular fade/peak cycle to re-contribute its peak before the
+/// filter forgets it, but short enough that the filter still tracks a
+/// shifted baseline capacity after a sustained drop. Previously 10 (≈200 ms)
+/// which caused C_est to collapse during fades and starve the planner.
+const BW_WINDOW: usize = 30;
+/// Phases in the probe-BW cycle: one RTT of up-gain, one RTT of drain,
+/// then four RTTs of 1.0× steady. Tightened from BBR's 8-RTT cadence
+/// (6 steady phases) because cellular capacity swings faster than wired
+/// links; shorter cycle gives the max-filter fresh peak samples more
+/// often. Gains are configurable via `MpccConfig::probe_up_gain` /
+/// `probe_down_gain`.
+const PROBE_CYCLE: u32 = 6;
 /// Cold-start phases where we hold pacing gain at 1.0 so the BW filter
 /// populates with at least a few honest samples before we start probing.
 const COLD_START_REPORTS: u32 = 4;
 
-fn pacing_gain(phase: u32) -> f64 {
+fn pacing_gain(phase: u32, up: f64, down: f64) -> f64 {
     match phase % PROBE_CYCLE {
-        0 => PROBE_UP_GAIN,
-        1 => PROBE_DOWN_GAIN,
+        0 => up,
+        1 => down,
         _ => 1.0,
     }
 }
@@ -247,7 +254,7 @@ impl<T: Ipc> Flow for MpccFlow<T> {
         // config opts in (cellular.yml sets probe_bw: true); on stable
         // wired / LEO links the perturbations have no slack to probe for.
         let gain = if self.cfg.probe_bw && self.phase >= COLD_START_REPORTS {
-            pacing_gain(self.phase)
+            pacing_gain(self.phase, self.cfg.probe_up_gain, self.cfg.probe_down_gain)
         } else {
             1.0
         };
